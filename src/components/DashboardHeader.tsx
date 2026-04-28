@@ -142,19 +142,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="relative w-64 h-9">
-              <div className="absolute inset-0 bg-white border border-white/20 rounded-md flex items-center transition-all">
-                  <Search size={14} className="shrink-0 text-slate-900 ml-3" />
-                  <input 
-                      type="text" 
-                      placeholder="BUSCAR VOO..." 
-                      className="bg-transparent border-none outline-none text-[10px] text-slate-900 placeholder:text-slate-500 font-mono uppercase w-full px-3 transition-all h-full rounded-md"
-                      value={globalSearchTerm}
-                      onChange={(e) => setGlobalSearchTerm(e.target.value)}
-                  />
-              </div>
-          </div>
-
           <button 
             onClick={() => {
               // Simulate sync

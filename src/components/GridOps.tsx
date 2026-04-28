@@ -52,6 +52,7 @@ interface GridOpsProps {
     operators: OperatorProfile[];
     initialTab?: Tab;
     globalSearchTerm?: string;
+    onUpdateSearch?: (term: string) => void;
     meshFlights?: MeshFlight[];
     setMeshFlights?: React.Dispatch<React.SetStateAction<MeshFlight[]>>;
     onOpenShiftOperators?: () => void;
@@ -144,6 +145,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
     operators,
     initialTab = 'GERAL', 
     globalSearchTerm = '',
+    onUpdateSearch,
     meshFlights = [],
     setMeshFlights,
     onOpenShiftOperators,
@@ -934,6 +936,27 @@ export const GridOps: React.FC<GridOpsProps> = ({
             <div className="flex items-center gap-3">
                 <div>
                   <h2 className="text-sm font-black text-white tracking-tighter uppercase leading-none">Malha Geral</h2>
+                </div>
+            </div>
+
+            <div className="relative w-72 h-9 ml-4">
+                <div className={`absolute inset-0 bg-white shadow-sm border ${isDarkMode ? 'border-slate-700' : 'border-white/20'} rounded flex items-center transition-all`}>
+                    <Search size={14} className="shrink-0 text-slate-800 ml-3" />
+                    <input 
+                        type="text" 
+                        placeholder="BUSCAR VOO NA MALHA..." 
+                        className="bg-transparent border-none outline-none text-[10px] text-slate-900 placeholder:text-slate-500 font-mono uppercase w-full px-3 transition-all h-full rounded"
+                        value={globalSearchTerm}
+                        onChange={(e) => onUpdateSearch && onUpdateSearch(e.target.value)}
+                    />
+                    {globalSearchTerm && (
+                        <button 
+                            onClick={() => onUpdateSearch && onUpdateSearch('')}
+                            className="p-1.5 mr-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

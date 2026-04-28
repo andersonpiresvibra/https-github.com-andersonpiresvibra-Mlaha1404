@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, Plane, Send, Search, Edit2, Trash2, Play, ClipboardList, Plus, Ban, AlertCircle, MoreVertical } from 'lucide-react';
 import { MeshFlight, INITIAL_MESH_FLIGHTS } from '../data/operationalMesh';
 import { FlightData, FlightStatus } from '../types';
@@ -32,6 +33,8 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
   const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [flightActionMenu, setFlightActionMenu] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
 
   const handleFieldChange = (id: string, field: MeshField, value: string) => {
     if (field === 'actions') return;
@@ -214,7 +217,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (flightActionMenu && !(e.target as Element).closest('.actions-container')) {
+      if (flightActionMenu && !(e.target as Element).closest('.actions-container') && !actionMenuRef.current?.contains(e.target as Node)) {
         setFlightActionMenu(null);
       }
     };
@@ -319,7 +322,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                     <th 
                       key={col.key} 
                       className={`
-                        ${col.width} px-2 py-2 text-[10px] font-black uppercase tracking-widest border ${isDarkMode ? 'border-slate-700' : 'border-slate-600'} text-center
+                        ${col.width} px-2 py-2 text-[10px] font-black uppercase tracking-widest border ${isDarkMode ? 'border-slate-700' : 'border-slate-700/50'} text-center
                         ${col.isVariable ? (isDarkMode ? 'bg-emerald-950/10 text-emerald-400' : 'bg-emerald-500/10 text-white') : ''}
                       `}
                     >
@@ -347,13 +350,19 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                       return (
                         <td 
                           key={`${flight.id}-actions`}
-                          className={`p-0 border ${isDarkMode ? 'border-slate-800' : 'border-slate-300'} relative h-8 text-center pointer-events-auto actions-container`}
+                          className={`p-0 border ${isDarkMode ? 'border-slate-800' : 'border-slate-700/30'} relative h-8 text-center pointer-events-auto actions-container`}
                         >
                           <div className="flex items-center justify-center w-full h-full">
                             <button 
                               onClick={(e) => {
                                   e.stopPropagation();
-                                  setFlightActionMenu(flightActionMenu === flight.id ? null : flight.id);
+                                  if (flightActionMenu === flight.id) {
+                                      setFlightActionMenu(null);
+                                  } else {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setMenuPosition({ top: rect.bottom, left: rect.right - 144 });
+                                      setFlightActionMenu(flight.id);
+                                  }
                               }}
                               className="p-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-sm active:scale-95"
                             >
@@ -361,10 +370,14 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                             </button>
                           </div>
 
-                          {flightActionMenu === flight.id && (
-                            <div className="absolute right-0 top-[110%] w-36 bg-slate-900 rounded-lg shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] border border-slate-700/50 z-[2000] flex flex-col overflow-hidden ring-1 ring-black/10 animate-in fade-in zoom-in-95 duration-200">
+                          {flightActionMenu === flight.id && menuPosition && createPortal(
+                            <div 
+                                ref={actionMenuRef}
+                                style={{ top: menuPosition.top + 4, left: menuPosition.left }}
+                                className="fixed w-36 bg-slate-900 rounded-lg shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] border border-slate-700/50 z-[9999] flex flex-col overflow-hidden ring-1 ring-black/10 animate-in fade-in zoom-in-95 duration-200"
+                            >
                                 <div className="px-3 py-2 bg-slate-800/50 border-b border-slate-700/50 flex flex-col gap-0.5">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Ações - Voo {flight.departureFlightNumber || 'NOVO'}</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider text-left">Ações - Voo {flight.departureFlightNumber || 'NOVO'}</span>
                                 </div>
                                 <button 
                                     onClick={(e) => {
@@ -372,7 +385,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                                         e.stopPropagation();
                                         handleToggleDisable(flight.id);
                                     }}
-                                    className="w-full px-3 py-2.5 text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-slate-800 text-slate-300 border-b border-slate-700/50 transition-colors"
+                                    className="w-full px-3 py-2.5 text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-slate-800 text-slate-300 border-b border-slate-700/50 transition-colors text-left"
                                 >
                                     <Ban size={12} className={flight.disabled ? 'text-emerald-500' : 'text-slate-400'} />
                                     {flight.disabled ? 'Ativar Voo' : 'Inativar Voo'}
@@ -383,13 +396,13 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                                         e.stopPropagation();
                                         handleDeleteFlight(flight.id);
                                     }}
-                                    className="w-full px-3 py-2.5 text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-red-900/40 text-red-500 transition-colors"
+                                    className="w-full px-3 py-2.5 text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-red-900/40 text-red-500 transition-colors text-left"
                                 >
                                     <Trash2 size={12} />
                                     Cancelar Voo
                                 </button>
                             </div>
-                          )}
+                          , document.body)}
                         </td>
                       );
                     }
@@ -408,7 +421,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                           }
                         }}
                         className={`
-                          p-0 border ${isDarkMode ? 'border-slate-800' : 'border-slate-300'} relative transition-all h-8
+                          p-0 border ${isDarkMode ? 'border-slate-800' : 'border-slate-700/30'} relative transition-all h-8
                           ${col.isVariable ? (isDarkMode ? 'bg-emerald-500/5' : 'bg-emerald-50/5') : ''}
                           ${isCellFocused ? 'ring-2 ring-indigo-500 ring-inset z-20 shadow-xl' : ''}
                           ${isCellFocused && !isCellEditing ? 'bg-indigo-600 text-white shadow-indigo-500/20' : ''}

@@ -206,6 +206,7 @@ const App: React.FC = () => {
                     operators={globalOperators}
                     initialTab={gridOpsInitialTab}
                     globalSearchTerm={globalSearchTerm}
+                    onUpdateSearch={setGlobalSearchTerm}
                     meshFlights={meshFlights}
                     setMeshFlights={setMeshFlights}
                     onOpenShiftOperators={() => handleViewChange('SHIFT_OPERATORS')}
