@@ -19,10 +19,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, isDa
     <aside className={`w-20 shrink-0 border-r flex flex-col items-center py-6 transition-all duration-300 ${
       isDarkMode 
         ? 'bg-slate-900 border-slate-800' 
-        : 'bg-[#2C864C] border-white/10'
+        : 'bg-[#004D24] border-transparent'
     }`}>
       <div className="flex flex-col gap-6 w-full items-center">
-        <nav className={`flex flex-col gap-4 w-full px-2 ${!isDarkMode ? 'bg-[#268200]' : ''}`}>
+        <nav className={`flex flex-col gap-4 w-full px-2 ${!isDarkMode ? 'bg-[#004D24]' : ''}`}>
           {navItems.map((item) => {
             const isActive = activeView === item.id;
             const Icon = item.icon;

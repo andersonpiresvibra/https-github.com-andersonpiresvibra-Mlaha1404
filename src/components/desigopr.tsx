@@ -53,8 +53,12 @@ export const DesigOpr: React.FC<DesigOprProps> = ({ isOpen, onClose, flight, veh
     }, [isOpen, selectedOperatorId, handleConfirm]);
 
     const availableOperators = useMemo(() => {
-        // Apenas operadores disponíveis
-        return operators.filter(op => op.status === 'DISPONÍVEL');
+        // Mostra todos, mas ordena por disponibilidade (DISPONÍVEL primeiro)
+        return [...operators].sort((a, b) => {
+            if (a.status === 'DISPONÍVEL' && b.status !== 'DISPONÍVEL') return -1;
+            if (a.status !== 'DISPONÍVEL' && b.status === 'DISPONÍVEL') return 1;
+            return 0;
+        });
     }, [operators]);
 
     const categorizedOperators = useMemo(() => {
@@ -66,6 +70,11 @@ export const DesigOpr: React.FC<DesigOprProps> = ({ isOpen, onClose, flight, veh
     }, [availableOperators]);
 
     const isOperatorDisabled = (op: OperatorProfile) => {
+        if (!op.assignedVehicle) return true;
+        
+        // Prevent assigning if operator is already on an active flight
+        if (['OCUPADO', 'DESIGNADO', 'ABASTECENDO'].includes(op.status)) return true;
+
         if (!flight) return false;
         // Se a posição for CTA, inabilitar SRVs
         if (flight.positionType === 'CTA' && op.fleetCapability === 'SRV') return true;
@@ -73,24 +82,24 @@ export const DesigOpr: React.FC<DesigOprProps> = ({ isOpen, onClose, flight, veh
     };
 
     // Fallback logic if statuses aren't exactly matching, or to ensure everyone is somewhere
-const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, isSelected: boolean, isDisabled: boolean }) => {
-    const [error, setError] = useState(false);
-    return (
-        <div className={`w-9 h-12 rounded-lg flex items-end justify-center text-sm font-black border overflow-hidden shrink-0 ${
-            isDisabled
-                ? 'bg-slate-50 text-slate-300 border-slate-100 opacity-50'
-                : isSelected 
-                    ? 'bg-indigo-100 text-indigo-600 border-indigo-200' 
-                    : 'bg-slate-100 text-slate-400 border-slate-200 group-hover:border-slate-300'
-        }`}>
-            {op.photoUrl && !error ? (
-                <img src={op.photoUrl} alt={op.warName} className={`w-full h-full object-cover ${isDisabled ? 'grayscale opacity-50' : ''}`} onError={() => setError(true)} referrerPolicy="no-referrer" />
-            ) : (
-                <User size={24} className={`${isDisabled ? 'text-slate-200' : isSelected ? 'text-indigo-300' : 'text-slate-300'} mb-1`} />
-            )}
-        </div>
-    );
-};
+    const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, isSelected: boolean, isDisabled: boolean }) => {
+        const [error, setError] = useState(false);
+        return (
+            <div className={`w-9 h-12 rounded-lg flex items-end justify-center text-sm font-black border overflow-hidden shrink-0 ${
+                isDisabled
+                    ? isDarkMode ? 'bg-slate-800 text-slate-500 border-slate-700 opacity-50' : 'bg-slate-50 text-slate-300 border-slate-100 opacity-50'
+                    : isSelected 
+                        ? isDarkMode ? 'bg-indigo-900/50 text-indigo-300 border-indigo-500/50' : 'bg-indigo-100 text-indigo-600 border-indigo-200' 
+                        : isDarkMode ? 'bg-slate-800 text-slate-400 border-slate-700 group-hover:border-slate-500' : 'bg-slate-100 text-slate-400 border-slate-200 group-hover:border-slate-300'
+            }`}>
+                {op.photoUrl && !error ? (
+                    <img src={op.photoUrl} alt={op.warName} className={`w-full h-full object-cover ${isDisabled ? 'grayscale opacity-50' : ''}`} onError={() => setError(true)} referrerPolicy="no-referrer" />
+                ) : (
+                    <User size={24} className={`${isDisabled ? (isDarkMode ? 'text-slate-600' : 'text-slate-200') : isSelected ? (isDarkMode ? 'text-indigo-400' : 'text-indigo-300') : (isDarkMode ? 'text-slate-500' : 'text-slate-300')} mb-1`} />
+                )}
+            </div>
+        );
+    };
 
     const currentList = categorizedOperators[activeTab];
 
@@ -108,15 +117,15 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
 
     return (
         <div 
-            className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200"
+            className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
             onClick={handleClose}
         >
             <div 
-                className={`${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] w-full max-w-md rounded-[8px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200`}
+                className={`${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] w-full max-w-md max-h-[85vh] rounded-[8px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200`}
                 onClick={e => e.stopPropagation()}
             >
                 {/* HEADER FINO */}
-                <div className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#2C864C] bg-[#2C864C]'}`}>
+                <div className={`flex items-center justify-between px-6 py-4 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#004D24] bg-[#004D24]'}`}>
                     <div className="flex items-center gap-4">
                 <div className={`w-10 h-10 flex items-center justify-center shrink-0 ${isDarkMode ? 'text-indigo-400' : 'text-emerald-100'}`}>
                     <UserPlus size={24} />
@@ -137,14 +146,14 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
                 </div>
 
                 {/* TABS */}
-                <div className="flex border-b border-slate-100 bg-white px-2">
+                <div className={`flex border-b px-2 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
                     {(['TODOS', 'SRV', 'CTA'] as Tab[]).map(tab => {
                         const count = categorizedOperators[tab].length;
                         const isActive = activeTab === tab;
                         
-                        let activeColor = 'text-indigo-600 border-indigo-600';
-                        if (tab === 'SRV') activeColor = 'text-emerald-600 border-emerald-600';
-                        if (tab === 'CTA') activeColor = 'text-yellow-600 border-yellow-600';
+                        let activeColor = isDarkMode ? 'text-indigo-400 border-indigo-400' : 'text-indigo-600 border-indigo-600';
+                        if (tab === 'SRV') activeColor = isDarkMode ? 'text-emerald-400 border-emerald-400' : 'text-emerald-600 border-emerald-600';
+                        if (tab === 'CTA') activeColor = isDarkMode ? 'text-yellow-400 border-yellow-400' : 'text-yellow-600 border-yellow-600';
 
                         return (
                             <button
@@ -153,15 +162,15 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
                                 className={`
                                     flex-1 py-4 text-[10px] font-bold uppercase tracking-wider border-b-2 transition-all flex items-center justify-center gap-2 ${
                                     isActive 
-                                        ? `bg-slate-50/50 ${activeColor}` 
-                                        : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                                        ? `${isDarkMode ? 'bg-slate-800' : 'bg-slate-50/50'} ${activeColor}` 
+                                        : `border-transparent ${isDarkMode ? 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`
                                 }`}
                             >
                                 {tab === 'TODOS' && <User size={12} />}
                                 {tab === 'SRV' && <Briefcase size={12} />}
                                 {tab === 'CTA' && <Clock size={12} />}
                                 {tab === 'TODOS' ? 'Todos' : tab}
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${isActive ? 'bg-white shadow-sm' : 'bg-slate-100'}`}>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${isActive ? (isDarkMode ? 'bg-slate-900' : 'bg-white shadow-sm') : (isDarkMode ? 'bg-slate-800/80' : 'bg-slate-100')}`}>
                                     {count}
                                 </span>
                             </button>
@@ -180,7 +189,7 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
                 )}
 
                 {/* LISTA DE OPERADORES */}
-                <div className="flex-1 p-6 min-h-[300px] max-h-[450px] overflow-y-auto custom-scrollbar bg-white">
+                <div className={`flex-1 min-h-0 p-4 md:p-6 overflow-y-auto custom-scrollbar ${isDarkMode ? 'bg-slate-900/50' : 'bg-white'}`}>
                     {currentList.length > 0 ? (
                         <div className="grid grid-cols-1 gap-3">
                             {currentList.map(op => {
@@ -198,30 +207,36 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
                                         disabled={isDisabled}
                                         className={`group w-full flex items-center justify-between px-4 py-3.5 rounded-lg border transition-all relative overflow-hidden active:scale-[0.98] ${
                                             isDisabled
-                                                ? 'bg-slate-50 border-slate-100 cursor-not-allowed opacity-60'
+                                                ? isDarkMode 
+                                                    ? 'bg-slate-800/30 border-slate-700/50 cursor-not-allowed opacity-60'
+                                                    : 'bg-slate-50 border-slate-100 cursor-not-allowed opacity-60'
                                                 : isSelected 
-                                                    ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
-                                                    : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100/50'
+                                                    ? isDarkMode
+                                                        ? 'bg-indigo-900/40 border-indigo-500/50 shadow-sm'
+                                                        : 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                                                    : isDarkMode
+                                                        ? 'bg-slate-800/50 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
+                                                        : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100/50'
                                         }`}
                                     >
                                         <div className="flex items-center gap-4 relative z-10">
                                             <OperatorImage op={op} isSelected={isSelected} isDisabled={isDisabled} />
                                             <div className="text-left">
-                                                <div className={`text-sm font-bold uppercase tracking-tight ${isDisabled ? 'text-slate-400' : isSelected ? 'text-indigo-900' : 'text-slate-900'}`}>
+                                                <div className={`text-sm font-bold uppercase tracking-tight ${isDisabled ? (isDarkMode ? 'text-slate-500' : 'text-slate-400') : isSelected ? (isDarkMode ? 'text-indigo-300' : 'text-indigo-900') : (isDarkMode ? 'text-slate-200' : 'text-slate-900')}`}>
                                                     {op.warName} {op.assignedVehicle ? `| ${op.assignedVehicle}` : ''}
                                                 </div>
-                                                <div className="flex items-center gap-2 mt-1.5">
-                                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${isDisabled ? 'bg-slate-100 text-slate-400 border-slate-200' : isSelected ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : statusColor}`}>
+                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${isDisabled ? (isDarkMode ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-slate-100 text-slate-400 border-slate-200') : isSelected ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-300 border-indigo-500/50' : 'bg-indigo-100 text-indigo-700 border-indigo-200') : statusColor}`}>
                                                         {op.status}
                                                     </span>
                                                     {op.fleetCapability && (
-                                                        <span className={`text-[9px] font-mono font-bold ${isDisabled ? 'text-slate-300' : isSelected ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                                        <span className={`text-[9px] font-mono font-bold ${isDisabled ? (isDarkMode ? 'text-slate-600' : 'text-slate-300') : isSelected ? (isDarkMode ? 'text-indigo-400' : 'text-indigo-400') : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
                                                             {op.fleetCapability}
                                                         </span>
                                                     )}
                                                     {isDisabled && (
-                                                        <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter bg-red-50 px-1 rounded border border-red-100">
-                                                            Incompatível
+                                                        <span className={`text-[8px] font-black uppercase tracking-tighter px-1 rounded border gap-1 ${isDarkMode ? 'bg-red-900/30 text-red-400 border-red-800/50' : 'text-red-500 bg-red-50 border-red-100'}`}>
+                                                            {!op.assignedVehicle ? 'Sem Frota' : 'Incompatível'}
                                                         </span>
                                                     )}
                                                 </div>
@@ -250,10 +265,14 @@ const OperatorImage = ({ op, isSelected, isDisabled }: { op: OperatorProfile, is
                 </div>
 
                 {/* FOOTER */}
-                <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4">
+                <div className={`p-4 md:p-6 border-t flex gap-3 md:gap-4 shrink-0 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
                     <button 
                         onClick={handleClose}
-                        className="flex-1 py-3.5 rounded-lg border border-slate-200 bg-white text-slate-500 font-bold text-[10px] hover:bg-slate-100 hover:text-slate-900 transition-all uppercase tracking-widest active:scale-95"
+                        className={`flex-1 py-3.5 rounded-lg border font-bold text-[10px] transition-all uppercase tracking-widest active:scale-95 ${
+                            isDarkMode 
+                                ? 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white' 
+                                : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
                     >
                         Cancelar
                     </button>

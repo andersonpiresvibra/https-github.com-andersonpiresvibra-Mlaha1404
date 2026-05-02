@@ -357,7 +357,7 @@ export const FlightDetailsModal: React.FC<FlightDetailsModalProps> = ({ flight, 
         {/* HEADER COMPACT & SOPHISTICATED */}
         <div 
             onMouseDown={handleMouseDown}
-            className={`${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#2C864C] border-[#2C864C]'} p-4 flex justify-between items-center cursor-move select-none border-b`}
+            className={`${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#004D24] border-transparent'} p-4 flex justify-between items-center cursor-move select-none border-b`}
         >
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 flex items-center justify-center shrink-0">

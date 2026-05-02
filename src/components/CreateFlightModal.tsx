@@ -39,7 +39,17 @@ export const CreateFlightModal: React.FC<CreateFlightModalProps> = ({ onClose, o
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    let newValue = value.toUpperCase();
+    
+    if (name === 'eta' || name === 'etd') {
+      newValue = value.replace(/[^0-9]/g, '');
+      if (newValue.length > 2) {
+        newValue = `${newValue.slice(0, 2)}:${newValue.slice(2, 4)}`;
+      }
+      if (newValue.length > 5) newValue = newValue.slice(0, 5);
+    }
+    
+    setFormData(prev => ({ ...prev, [name]: newValue }));
   };
 
   const handleCreate = () => {
@@ -105,7 +115,7 @@ export const CreateFlightModal: React.FC<CreateFlightModalProps> = ({ onClose, o
       <div className={`w-full max-w-xl ${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] rounded-[8px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200`}>
         
         {/* Header */}
-        <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#2C864C] bg-[#2C864C]'} flex justify-between items-center`}>
+        <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-transparent bg-[#004D24]'} flex justify-between items-center`}>
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 flex items-center justify-center shrink-0 ${isDarkMode ? 'text-emerald-500' : 'text-emerald-100'}`}>
               <Plane size={20} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ViewState, FlightData, Vehicle } from './types';
-import { MOCK_FLIGHTS, MOCK_TEAM_PROFILES } from './data/mockData';
+import { MOCK_TEAM_PROFILES } from './data/mockData';
 import { MOCK_VEHICLES } from './data/mockVehicleData';
 import { MeshFlight, INITIAL_MESH_FLIGHTS } from './data/operationalMesh';
 import { DashboardHeader } from './components/DashboardHeader';
@@ -19,7 +19,26 @@ const App: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<'CREATE' | 'IMPORT' | null>(null);
 
   // === ESTADO CENTRALIZADO (A VERDADE ÚNICA) ===
-  const [globalFlights, setGlobalFlights] = useState<FlightData[]>(MOCK_FLIGHTS);
+  const [globalFlights, setGlobalFlights] = useState<FlightData[]>(() => {
+    const saved = localStorage.getItem('globalFlights');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map((f: any) => ({
+          ...f,
+          designationTime: f.designationTime ? new Date(f.designationTime) : undefined,
+          assignmentTime: f.assignmentTime ? new Date(f.assignmentTime) : undefined,
+          startTime: f.startTime ? new Date(f.startTime) : undefined,
+          endTime: f.endTime ? new Date(f.endTime) : undefined,
+          logs: f.logs ? f.logs.map((l: any) => ({ ...l, timestamp: new Date(l.timestamp) })) : [],
+          messages: f.messages ? f.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })) : []
+        }));
+      } catch (e) {
+      }
+    }
+    return [];
+  });
+
   const [globalVehicles, setGlobalVehicles] = useState<Vehicle[]>(MOCK_VEHICLES);
   const [globalOperators, setGlobalOperators] = useState<OperatorProfile[]>(MOCK_TEAM_PROFILES);
   const [meshFlights, setMeshFlights] = useState<MeshFlight[]>(() => {
@@ -35,13 +54,27 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
+    if (!localStorage.getItem('migration_no_mocks_v3')) {
+      localStorage.removeItem('globalFlights');
+      localStorage.removeItem('meshFlights');
+      localStorage.setItem('migration_no_mocks_v3', 'true');
+      window.location.reload();
+    }
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('meshFlights', JSON.stringify(meshFlights));
   }, [meshFlights]);
+
+  useEffect(() => {
+    localStorage.setItem('globalFlights', JSON.stringify(globalFlights));
+  }, [globalFlights]);
 
   const { isDarkMode, toggleDarkMode } = useTheme();
   const [gridOpsInitialTab, setGridOpsInitialTab] = useState<'GERAL' | 'CHEGADA' | 'FILA' | 'DESIGNADOS' | 'ABASTECENDO' | 'FINALIZADO'>('GERAL');
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+  const [ltName, setLtName] = useState('OPERADOR_ADMIN');
 
   const toggleFullscreen = () => {
     const doc = document as any;
@@ -88,34 +121,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // === SIMULAÇÃO DE VAZÃO DINÂMICA (5 SEGUNDOS) ===
-  useEffect(() => {
-    const flowTimer = setInterval(() => {
-      setGlobalFlights(prev => prev.map(f => {
-        if (f.status === 'ABASTECENDO') {
-          const baseFlow = f.maxFlowRate || 1000;
-          let nextFlow = f.currentFlowRate ?? baseFlow;
-
-          if (nextFlow > 0) {
-            // Flutuação natural de +/- 5%
-            const fluctuation = (Math.random() - 0.5) * 0.05 * baseFlow;
-            nextFlow = Math.max(100, Math.min(baseFlow, nextFlow + fluctuation));
-
-            // Chance de 3% de pausar o abastecimento
-            if (Math.random() < 0.03) nextFlow = 0;
-          } else {
-            // Chance de 15% de retomar o abastecimento
-            if (Math.random() < 0.15) nextFlow = baseFlow * 0.7;
-          }
-
-          return { ...f, currentFlowRate: Math.round(nextFlow) };
-        }
-        return f;
-      }));
-    }, 5000);
-    return () => clearInterval(flowTimer);
-  }, []);
-
   const [showExitWarning, setShowExitWarning] = useState<{ id: string } | null>(null);
   const [targetView, setTargetView] = useState<ViewState | null>(null);
 
@@ -144,7 +149,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`${isDarkMode ? 'dark bg-slate-950' : 'bg-slate-50'} ${isPseudoFullscreen ? 'fixed inset-0 z-[9999]' : 'h-screen w-screen'} overflow-hidden flex flex-col`}>
+    <div className={`${isDarkMode ? 'dark bg-slate-950' : 'bg-slate-50'} ${isPseudoFullscreen ? 'fixed inset-0 z-[9999]' : 'h-[100dvh] w-full'} overflow-hidden flex flex-col`}>
       {showExitWarning && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" />
@@ -184,6 +189,8 @@ const App: React.FC = () => {
         onToggleFullscreen={toggleFullscreen} 
         globalSearchTerm={globalSearchTerm}
         setGlobalSearchTerm={setGlobalSearchTerm}
+        ltName={ltName}
+        setLtName={setLtName}
       />
       
       <div id="subheader-portal-target" className="w-full shrink-0 z-[60] relative"></div>
@@ -212,6 +219,7 @@ const App: React.FC = () => {
                     onOpenShiftOperators={() => handleViewChange('SHIFT_OPERATORS')}
                     pendingAction={pendingAction}
                     setPendingAction={setPendingAction}
+                    ltName={ltName}
                   />
                 )}
                 {view === 'SHIFT_OPERATORS' && (
@@ -219,6 +227,8 @@ const App: React.FC = () => {
                     onClose={() => handleViewChange('GRID_OPS')}
                     operators={globalOperators}
                     onUpdateOperators={setGlobalOperators}
+                    flights={globalFlights}
+                    onUpdateFlights={setGlobalFlights}
                     onOpenCreateModal={() => {
                         setPendingAction('CREATE');
                         handleViewChange('GRID_OPS');
@@ -235,6 +245,8 @@ const App: React.FC = () => {
                     isDarkMode={isDarkMode}
                     meshFlights={meshFlights}
                     setMeshFlights={setMeshFlights}
+                    setFlights={setGlobalFlights}
+                    globalFlights={globalFlights}
                     onActivateMesh={(newFlights) => {
                       setGlobalFlights(prev => [...newFlights, ...prev]);
                     }}

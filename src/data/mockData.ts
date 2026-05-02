@@ -42,22 +42,22 @@ export const GOL_B737_8_PREFIXES = [
 
 // === LISTA DE OPERADORES ===
 export const MOCK_OPERATORS: Operator[] = [
-    { id: 'op_horacio', name: 'Horácio', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
-    { id: 'op_carlos', name: 'Carlos', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
-    { id: 'op_bruno', name: 'Bruno', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
+    { id: 'op_horacio', name: 'Horácio', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
+    { id: 'op_carlos', name: 'Carlos', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
+    { id: 'op_bruno', name: 'Bruno', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
     { id: 'op_felipe', name: 'Felipe', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
-    { id: 'op_andre', name: 'André', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
-    { id: 'op_gabriel', name: 'Gabriel', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
-    { id: 'op_rodrigo', name: 'Rodrigo', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
+    { id: 'op_andre', name: 'André', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
+    { id: 'op_gabriel', name: 'Gabriel', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
+    { id: 'op_rodrigo', name: 'Rodrigo', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
     { id: 'op_marcelo', name: 'Marcelo', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
     { id: 'op_sergio', name: 'Sérgio', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
-    { id: 'op_ricardo', name: 'Ricardo', status: 'OCUPADO', vehicleType: 'SERVIDOR' },
-    { id: 'op_betao', name: 'Betão', status: 'ENCHIMENTO', vehicleType: 'CTA' },
-    { id: 'op_tiago', name: 'Tiago', status: 'ENCHIMENTO', vehicleType: 'CTA' },
+    { id: 'op_ricardo', name: 'Ricardo', status: 'DISPONÍVEL', vehicleType: 'SERVIDOR' },
+    { id: 'op_betao', name: 'Betão', status: 'DISPONÍVEL', vehicleType: 'CTA' },
+    { id: 'op_tiago', name: 'Tiago', status: 'DISPONÍVEL', vehicleType: 'CTA' },
     { id: 'op_lucas', name: 'Lucas', status: 'DISPONÍVEL', vehicleType: 'CTA' },
-    { id: 'op_eduardo', name: 'Eduardo', status: 'OCUPADO', vehicleType: 'CTA' },
+    { id: 'op_eduardo', name: 'Eduardo', status: 'DISPONÍVEL', vehicleType: 'CTA' },
     { id: 'op_roberto', name: 'Roberto', status: 'DISPONÍVEL', vehicleType: 'CTA' },
-    { id: 'op_mariana', name: 'Mariana', status: 'OCUPADO', vehicleType: 'CTA' },
+    { id: 'op_mariana', name: 'Mariana', status: 'DISPONÍVEL', vehicleType: 'CTA' },
 ];
 
 // === CONFIGURAÇÃO DAS SUAS IMAGENS LOCAIS ===
@@ -199,107 +199,107 @@ const createProfile = (id: string, name: string, warName: string, category: 'AER
 
 export const MOCK_TEAM_PROFILES: OperatorProfile[] = [
     // --- 05:00 - 14:00 (MANHÃ) ---
-    createProfile('op_michel', 'Michel', 'Michel', 'AERODROMO', 'INATIVO', 'MANHÃ'),
-    createProfile('op_joao', 'Joao', 'Joao', 'AERODROMO', 'INATIVO', 'MANHÃ'),
-    createProfile('op_adauto', 'Adauto', 'Adauto', 'AERODROMO', 'INATIVO', 'MANHÃ'),
-    createProfile('op_ewerton', 'Ewerton', 'Ewerton', 'AERODROMO', 'INATIVO', 'MANHÃ'),
+    createProfile('op_michel', 'Michel', 'Michel', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_joao', 'Joao', 'Joao', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_adauto', 'Adauto', 'Adauto', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_ewerton', 'Ewerton', 'Ewerton', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
 
     // --- 06:00 - 15:00 (MANHÃ) ---
-    createProfile('op_paulo', 'Paulo', 'Paulo', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_alex', 'Alex Barbosa', 'Alex', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_paulo', 'Paulo', 'Paulo', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_alex', 'Alex Barbosa', 'Alex', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_douglas', 'Douglas', 'Douglas', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_tavares', 'Tavares', 'Tavares', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_tavares', 'Tavares', 'Tavares', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_julio', 'Julio', 'Julio', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_sandro', 'Sandro', 'Sandro', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_cleber', 'Cléber', 'Cléber', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_sandro', 'Sandro', 'Sandro', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_cleber', 'Cléber', 'Cléber', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_jose', 'Jose', 'Jose', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_calazans', 'Calazans', 'Calazans', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_silva', 'Silva', 'Silva', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_calazans', 'Calazans', 'Calazans', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_silva', 'Silva', 'Silva', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_guilherme', 'Guilherme', 'Guilherme', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_ildo', 'Ildo', 'Ildo', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_peterson', 'Peterson', 'Peterson', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_ildo', 'Ildo', 'Ildo', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_peterson', 'Peterson', 'Peterson', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_renilson', 'Renilson', 'Renilson', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_carlos_m', 'Carlos', 'Carlos', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_vagner', 'Vagner', 'Vagner', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_carlos_m', 'Carlos', 'Carlos', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_vagner', 'Vagner', 'Vagner', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_medeiros', 'Medeiros', 'Medeiros', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_cesar', 'Cesar JC', 'Cesar', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_flavio', 'Flavio', 'Flavio', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_cesar', 'Cesar JC', 'Cesar', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_flavio', 'Flavio', 'Flavio', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_ramos', 'Ramos', 'Ramos', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_belentani', 'Belentani', 'Belentani', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_eules', 'Eules', 'Eules', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_belentani', 'Belentani', 'Belentani', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_eules', 'Eules', 'Eules', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_souza', 'Souza', 'Souza', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_luna', 'Luna', 'Luna', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_huan', 'Huan', 'Huan', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_luna', 'Luna', 'Luna', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_huan', 'Huan', 'Huan', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
 
     // --- 06:00 - 16:00 (MANHÃ) ---
-    createProfile('op_luis', 'Luis', 'Luis', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_luis', 'Luis', 'Luis', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_luciano', 'Luciano', 'Luciano', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_idenilson', 'Idenilson', 'Idenilson', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_idenilson', 'Idenilson', 'Idenilson', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
 
     // --- 14:30 - 23:30 (TARDE - ILHA/AERODROMO) ---
-    createProfile('op_manoel', 'Manoel', 'Manoel', 'ILHA', 'ENCHIMENTO', 'TARDE'),
-    createProfile('op_ronald', 'Ronald', 'Ronald', 'ILHA', 'ENCHIMENTO', 'TARDE'),
+    createProfile('op_manoel', 'Manoel', 'Manoel', 'ILHA', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_ronald', 'Ronald', 'Ronald', 'ILHA', 'DISPONÍVEL', 'TARDE'),
     createProfile('op_kleysson', 'Kleysson', 'Kleysson', 'ILHA', 'DISPONÍVEL', 'TARDE'),
-    createProfile('op_vinicius', 'Vinicius', 'Vinicius', 'ILHA', 'ENCHIMENTO', 'TARDE'),
+    createProfile('op_vinicius', 'Vinicius', 'Vinicius', 'ILHA', 'DISPONÍVEL', 'TARDE'),
     createProfile('op_bastos', 'Bastos', 'Bastos', 'ILHA', 'DISPONÍVEL', 'TARDE'),
-    createProfile('op_elton', 'Elton', 'Elton', 'ILHA', 'ENCHIMENTO', 'TARDE'),
+    createProfile('op_elton', 'Elton', 'Elton', 'ILHA', 'DISPONÍVEL', 'TARDE'),
 
     // --- 14:42 - 23:30 (TARDE) ---
-    createProfile('op_rodolfo', 'Rodolfo', 'Rodolfo', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_leonardo', 'Leonardo', 'Leonardo', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_wesley', 'Wesley', 'Wesley', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_junior', 'Junior', 'Junior', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_lucas_t', 'Lucas', 'Lucas', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_caio', 'Caio', 'Caio', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_pettinelli', 'Pettinelli', 'Pettinelli', 'AERODROMO', 'INATIVO', 'TARDE'),
+    createProfile('op_rodolfo', 'Rodolfo', 'Rodolfo', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_leonardo', 'Leonardo', 'Leonardo', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_wesley', 'Wesley', 'Wesley', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_junior', 'Junior', 'Junior', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_lucas_t', 'Lucas', 'Lucas', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_caio', 'Caio', 'Caio', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_pettinelli', 'Pettinelli', 'Pettinelli', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
 
     // --- 15:15 - 00:00 (TARDE) ---
-    createProfile('op_fredison', 'Fredison', 'Fredison', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_alves', 'Alves', 'Alves', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_leandro', 'Leandro Eufra', 'Leandro', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_jose_edson', 'Jose Edson', 'Jose', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_feitosa', 'Feitosa', 'Feitosa', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_lopes', 'Lopes', 'Lopes', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_givani', 'Givani', 'Givani', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_renato', 'Renato', 'Renato', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_costa', 'Costa', 'Costa', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_gilvan', 'Gilvan', 'Gilvan', 'AERODROMO', 'INATIVO', 'TARDE'),
+    createProfile('op_fredison', 'Fredison', 'Fredison', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_alves', 'Alves', 'Alves', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_leandro', 'Leandro Eufra', 'Leandro', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_jose_edson', 'Jose Edson', 'Jose', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_feitosa', 'Feitosa', 'Feitosa', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_lopes', 'Lopes', 'Lopes', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_givani', 'Givani', 'Givani', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_renato', 'Renato', 'Renato', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_costa', 'Costa', 'Costa', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_gilvan', 'Gilvan', 'Gilvan', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
 
     // --- 16:00 - 00:37 (TARDE) ---
-    createProfile('op_marques', 'Marques', 'Marques', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_horacio_t', 'Horacio', 'Horacio', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_laercio', 'Laercio', 'Laercio', 'AERODROMO', 'INATIVO', 'TARDE'),
+    createProfile('op_marques', 'Marques', 'Marques', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_horacio_t', 'Horacio', 'Horacio', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_laercio', 'Laercio', 'Laercio', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
 
     // --- 21:12 - 06:00 (NOITE) ---
-    createProfile('op_milton', 'Milton', 'Milton', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_norman', 'Norman', 'Norman', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_rafael', 'Rafael', 'Rafael', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_dourado', 'Dourado', 'Dourado', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_venancio', 'Venancio', 'Venancio', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_diogo', 'Diogo', 'Diogo', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_willian', 'Willian', 'Willian', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_silverio', 'Silverio', 'Silverio', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_regis', 'Regis', 'Regis', 'AERODROMO', 'INATIVO', 'NOITE'),
+    createProfile('op_milton', 'Milton', 'Milton', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_norman', 'Norman', 'Norman', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_rafael', 'Rafael', 'Rafael', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_dourado', 'Dourado', 'Dourado', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_venancio', 'Venancio', 'Venancio', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_diogo', 'Diogo', 'Diogo', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_willian', 'Willian', 'Willian', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_silverio', 'Silverio', 'Silverio', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_regis', 'Regis', 'Regis', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
 
     // --- LIDERES ---
-    createProfile('op_cesario', 'Cesario', 'Cesario', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_cesario', 'Cesario', 'Cesario', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_martinez', 'Martinez', 'Martinez', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_paschoal', 'Paschoal', 'Paschoal', 'AERODROMO', 'OCUPADO', 'MANHÃ'),
-    createProfile('op_spedini', 'Spedini', 'Spedini', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_jonatana', 'Jonatana', 'Jonatana', 'AERODROMO', 'INATIVO', 'TARDE'),
-    createProfile('op_pereira', 'Pereira', 'Pereira', 'AERODROMO', 'INATIVO', 'NOITE'),
-    createProfile('op_gustavo', 'Gustavo', 'Gustavo', 'AERODROMO', 'INATIVO', 'NOITE'),
+    createProfile('op_paschoal', 'Paschoal', 'Paschoal', 'AERODROMO', 'DISPONÍVEL', 'MANHÃ'),
+    createProfile('op_spedini', 'Spedini', 'Spedini', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_jonatana', 'Jonatana', 'Jonatana', 'AERODROMO', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_pereira', 'Pereira', 'Pereira', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_gustavo', 'Gustavo', 'Gustavo', 'AERODROMO', 'DISPONÍVEL', 'NOITE'),
 
     // --- PATIO VIP ---
-    createProfile('op_fernando', 'Fernando', 'Fernando', 'VIP', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_fernando', 'Fernando', 'Fernando', 'VIP', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_valdina', 'Valdina', 'Valdina', 'VIP', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_renata', 'Renata', 'Renata', 'VIP', 'OCUPADO', 'MANHÃ'),
+    createProfile('op_renata', 'Renata', 'Renata', 'VIP', 'DISPONÍVEL', 'MANHÃ'),
     createProfile('op_zago', 'Zago', 'Zago', 'VIP', 'DISPONÍVEL', 'MANHÃ'),
-    createProfile('op_torres', 'Torres', 'Torres', 'VIP', 'INATIVO', 'TARDE'),
-    createProfile('op_solange', 'Solange', 'Solange', 'VIP', 'INATIVO', 'TARDE'),
-    createProfile('op_loyola', 'Loyola', 'Loyola', 'VIP', 'INATIVO', 'TARDE'),
-    createProfile('op_norival', 'Norival', 'Norival', 'VIP', 'INATIVO', 'NOITE'),
-    createProfile('op_pires', 'Pires', 'Pires', 'VIP', 'INATIVO', 'NOITE'),
+    createProfile('op_torres', 'Torres', 'Torres', 'VIP', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_solange', 'Solange', 'Solange', 'VIP', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_loyola', 'Loyola', 'Loyola', 'VIP', 'DISPONÍVEL', 'TARDE'),
+    createProfile('op_norival', 'Norival', 'Norival', 'VIP', 'DISPONÍVEL', 'NOITE'),
+    createProfile('op_pires', 'Pires', 'Pires', 'VIP', 'DISPONÍVEL', 'NOITE'),
 ].map(p => {
     // Ajustar horários específicos
     if (['Michel', 'Joao', 'Adauto', 'Ewerton'].includes(p.warName)) { p.shift = { cycle: 'MANHÃ', start: '05:00', end: '14:00' }; }
@@ -433,7 +433,7 @@ const generateMockFlights = (): FlightData[] => {
                 }
 
                 const fuelingTime = new Date(etd.getTime() - 40 * 60000);
-                operator = getRandomOperatorForTime(fuelingTime, isInternational ? 'SERVIDOR' : 'SERVIDOR');
+                // operator = getRandomOperatorForTime(...) removed for manual operation
                 
                 if (operator && !isCancelled) {
                     designationTime = new Date(fuelingTime.getTime() - 20 * 60000);
@@ -464,7 +464,7 @@ const generateMockFlights = (): FlightData[] => {
                 actualArrivalTime = new Date(eta.getTime() + (Math.random() * 10 - 5) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 
                 const fuelingTime = new Date(etd.getTime() - 40 * 60000);
-                operator = getRandomOperatorForTime(fuelingTime, isInternational ? 'SERVIDOR' : 'SERVIDOR');
+                // operator = getRandomOperatorForTime(...) removed for manual operation
                 if (operator) {
                     designationTime = new Date(fuelingTime.getTime() - 20 * 60000);
                     startTimeAb = fuelingTime;
@@ -481,14 +481,14 @@ const generateMockFlights = (): FlightData[] => {
                     logs.push(createLog(5, 'SISTEMA', 'Voo entrou na fila de prioridade.', 'SISTEMA'));
                 } else if (rand < 0.7) {
                     status = FlightStatus.DESIGNADO;
-                    operator = getRandomOperatorForTime(now, isInternational ? 'SERVIDOR' : 'SERVIDOR');
+                    // operator = getRandomOperatorForTime(...) removed for manual operation
                     if (operator) {
                         designationTime = new Date(now.getTime() - 10 * 60000);
                         logs.push(createLog(10, 'SISTEMA', `Operador ${operator.warName} designado para o voo.`, 'SISTEMA'));
                     }
                 } else {
                     status = FlightStatus.AGUARDANDO;
-                    operator = getRandomOperatorForTime(now, isInternational ? 'SERVIDOR' : 'SERVIDOR');
+                    // operator = getRandomOperatorForTime(...) removed for manual operation
                     if (operator) {
                         designationTime = new Date(now.getTime() - 25 * 60000);
                         logs.push(createLog(25, 'SISTEMA', `Operador ${operator.warName} aguardando calço.`, 'SISTEMA'));
@@ -540,15 +540,15 @@ const generateMockFlights = (): FlightData[] => {
     // --- GERAR VOOS (ONTEM E HOJE) ---
     
     // Ontem (para popular relatórios)
-    generateBatch(6, 14, 100, -1);
-    generateBatch(14, 22, 100, -1);
-    generateBatch(22, 24, 20, -1);
+    // generateBatch(6, 14, 100, -1);
+    // generateBatch(14, 22, 100, -1);
+    // generateBatch(22, 24, 20, -1);
 
     // Hoje (operação ativa)
-    generateBatch(0, 6, 30);
-    generateBatch(6, 14, 135);
-    generateBatch(14, 22, 110);
-    generateBatch(22, 24, 20);
+    // generateBatch(0, 6, 30);
+    // generateBatch(6, 14, 135);
+    // generateBatch(14, 22, 110);
+    // generateBatch(22, 24, 20);
 
     return flights.sort((a, b) => {
         // Ordenar por ETD

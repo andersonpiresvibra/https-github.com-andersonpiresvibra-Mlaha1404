@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { OperatorProfile } from '../types';
-import { X, Plus, Trash2, BusFront, User, ArrowLeft, Upload, UserPlus } from 'lucide-react';
+import { OperatorProfile, FlightData } from '../types';
+import { X, Plus, Trash2, BusFront, User, ArrowLeft, Upload, UserPlus, AlertCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface ShiftOperatorsSectionProps {
@@ -10,9 +10,11 @@ interface ShiftOperatorsSectionProps {
     onUpdateOperators: (operators: OperatorProfile[]) => void;
     onOpenCreateModal?: () => void;
     onOpenImportModal?: () => void;
+    flights?: FlightData[];
+    onUpdateFlights?: (flights: FlightData[]) => void;
 }
 
-export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ onClose, operators, onUpdateOperators, onOpenCreateModal, onOpenImportModal }) => {
+export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ onClose, operators, onUpdateOperators, onOpenCreateModal, onOpenImportModal, flights, onUpdateFlights }) => {
     const { isDarkMode } = useTheme();
     const [nameInput, setNameInput] = useState('');
     const [fleetInput, setFleetInput] = useState('');
@@ -21,6 +23,9 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
 
     const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
     const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+    const [replaceOperatorModal, setReplaceOperatorModal] = useState<{ isOpen: boolean, operatorId: string, assignedFlights: FlightData[] }>({ isOpen: false, operatorId: '', assignedFlights: [] });
+    const [replacementOperatorId, setReplacementOperatorId] = useState<string>('');
 
     const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
     const [optionsPortalTarget, setOptionsPortalTarget] = useState<HTMLElement | null>(null);
@@ -71,7 +76,53 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
     };
 
     const handleRemove = (id: string) => {
-        onUpdateOperators(operators.filter(op => op.id !== id));
+        const op = operators.find(o => o.id === id);
+        if (!op) return;
+
+        if (flights && onUpdateFlights) {
+            const assignedFlights = flights.filter(f => 
+                (f.status === 'DESIGNADO' || f.status === 'ABASTECENDO') && 
+                (f.operator === op.warName || f.supportOperator === op.warName)
+            );
+
+            if (assignedFlights.length > 0) {
+                setReplaceOperatorModal({ isOpen: true, operatorId: id, assignedFlights });
+                return;
+            }
+        }
+        
+        onUpdateOperators(operators.filter(o => o.id !== id));
+    };
+
+    const confirmReplacementAndRemove = () => {
+        if (!replaceOperatorModal.operatorId) return;
+
+        const opToRemove = operators.find(o => o.id === replaceOperatorModal.operatorId);
+        const replacementOp = operators.find(o => o.id === replacementOperatorId);
+
+        if (flights && onUpdateFlights && opToRemove) {
+            onUpdateFlights(flights.map(f => {
+                const isAssigned = f.operator === opToRemove.warName;
+                const isSupport = f.supportOperator === opToRemove.warName;
+                
+                if (isAssigned || isSupport) {
+                    const newStatus = (!replacementOp && isAssigned && f.status === 'DESIGNADO') ? 'FILA' : f.status;
+                    return {
+                        ...f,
+                        operator: isAssigned ? (replacementOp?.warName || undefined) : f.operator,
+                        supportOperator: isSupport ? (replacementOp?.warName || undefined) : f.supportOperator,
+                        fleet: isAssigned && replacementOp ? replacementOp.assignedVehicle : f.fleet,
+                        vehicleType: isAssigned && replacementOp ? replacementOp.fleetCapability : f.vehicleType,
+                        status: newStatus
+                    } as FlightData;
+                }
+                return f;
+            }));
+        }
+
+        onUpdateOperators(operators.filter(o => o.id !== replaceOperatorModal.operatorId));
+        setReplaceOperatorModal({ isOpen: false, operatorId: '', assignedFlights: [] });
+        setReplacementOperatorId('');
     };
 
     const handleUpdateOperator = (id: string, field: keyof OperatorProfile, value: any) => {
@@ -168,7 +219,7 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
     };
 
     const headerContent = (
-        <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#2C864C] border-white/10'} z-[60] w-full`}>
+        <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#3CA317] border-transparent text-white'} z-[60] w-full`}>
             <div className="flex items-center gap-6">
                 <button 
                     onClick={onClose} 
@@ -296,6 +347,87 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
             {portalTarget ? createPortal(headerContent, portalTarget) : headerContent}
             {optionsPortalTarget ? createPortal(optionsDropdownContent, optionsPortalTarget) : null}
 
+            {replaceOperatorModal.isOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className={`${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'} border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden`}>
+                        <div className={`px-6 py-4 border-b flex items-center gap-3 ${isDarkMode ? 'border-slate-800 bg-red-900/20' : 'border-slate-100 bg-red-50'}`}>
+                            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                                <AlertCircle size={20} className="text-red-500" />
+                            </div>
+                            <div>
+                                <h3 className={`font-black uppercase tracking-tight text-lg leading-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                                    Operador Designado
+                                </h3>
+                                <p className={`text-xs font-medium mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                    A ação não pode ser permitida. Este operador está em atendimento.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 space-y-6">
+                            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    Voos Impactados ({replaceOperatorModal.assignedFlights.length})
+                                </h4>
+                                <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                    {replaceOperatorModal.assignedFlights.map(f => (
+                                        <div key={f.id} className={`flex items-center justify-between text-sm p-2 rounded-lg ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-black ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{f.airlineCode} {f.flightNumber}</span>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${f.status === 'ABASTECENDO' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-500'}`}>{f.status}</span>
+                                            </div>
+                                            <span className={`font-mono text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>ETD {f.etd}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    Propor Substituição
+                                </h4>
+                                <select 
+                                    value={replacementOperatorId}
+                                    onChange={e => setReplacementOperatorId(e.target.value)}
+                                    className={`w-full border px-4 py-3 rounded-xl font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${
+                                        isDarkMode 
+                                        ? 'bg-slate-800 border-slate-700 text-white' 
+                                        : 'bg-white border-slate-300 text-slate-900'
+                                    }`}
+                                >
+                                    <option value="">Nenhuma (Devolver voos para fila)</option>
+                                    {operators.filter(o => o.id !== replaceOperatorModal.operatorId && o.assignedVehicle).map(op => (
+                                        <option key={op.id} value={op.id}>{op.warName} - {op.assignedVehicle} ({op.fleetCapability || 'SRV'})</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className={`px-6 py-4 border-t flex justify-end gap-3 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50'}`}>
+                            <button
+                                onClick={() => {
+                                    setReplaceOperatorModal({ isOpen: false, operatorId: '', assignedFlights: [] });
+                                    setReplacementOperatorId('');
+                                }}
+                                className={`px-5 py-2.5 rounded-xl font-bold uppercase tracking-wider text-xs transition-colors ${
+                                    isDarkMode 
+                                    ? 'hover:bg-slate-800 text-slate-300' 
+                                    : 'hover:bg-slate-200 text-slate-600'
+                                }`}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmReplacementAndRemove}
+                                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold uppercase tracking-wider text-xs shadow-lg shadow-red-500/20 transition-colors"
+                            >
+                                Substituir e Remover
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={`w-full shrink-0 border-b ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
                 <div className="flex w-full px-6">
                     <button
@@ -357,24 +489,36 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
 
             <div className="flex-1 overflow-y-auto p-6 pt-4">
                 <div className="w-full">
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-2 content-start">
+                    <div className="flex flex-wrap gap-2 content-start">
                         {activeTab === 'GERAL' && (
-                            operators.length > 0 ? operators.map(renderOperatorCard) : (
-                                <div className="col-span-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
+                            operators.length > 0 ? operators.map(op => (
+                                <div key={op.id} className="w-full sm:w-[240px]">
+                                    {renderOperatorCard(op)}
+                                </div>
+                            )) : (
+                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
                                     Nenhum operador
                                 </div>
                             )
                         )}
                         {activeTab === 'SRV' && (
-                            srvOperators.length > 0 ? srvOperators.map(renderOperatorCard) : (
-                                <div className="col-span-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
+                            srvOperators.length > 0 ? srvOperators.map(op => (
+                                <div key={op.id} className="w-full sm:w-[240px]">
+                                    {renderOperatorCard(op)}
+                                </div>
+                            )) : (
+                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
                                     Nenhum operador SRV
                                 </div>
                             )
                         )}
                         {activeTab === 'CTA' && (
-                            ctaOperators.length > 0 ? ctaOperators.map(renderOperatorCard) : (
-                                <div className="col-span-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
+                            ctaOperators.length > 0 ? ctaOperators.map(op => (
+                                <div key={op.id} className="w-full sm:w-[240px]">
+                                    {renderOperatorCard(op)}
+                                </div>
+                            )) : (
+                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
                                     Nenhum operador CTA
                                 </div>
                             )

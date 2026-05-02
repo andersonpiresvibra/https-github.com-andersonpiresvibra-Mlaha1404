@@ -22,7 +22,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center animate-in fade-in">
             <div className={`${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] rounded-[8px] shadow-2xl w-full max-w-lg relative overflow-hidden m-4`}>
-                <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#2C864C] bg-[#2C864C]'}`}>
+                <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#004D24] bg-[#004D24]'}`}>
                     <div>
                         <h3 className="text-base font-black text-white uppercase tracking-tighter">Registrar Observação</h3>
                         <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-emerald-100'}`}>Voo <span className="font-bold text-emerald-400">{flight.flightNumber}</span> / Prefixo <span className="font-bold text-emerald-400">{flight.registration}</span></p>

@@ -148,6 +148,7 @@ export interface FlightData {
   vehicleType?: VehicleType;
   volume?: number;
   messages?: ChatMessage[];
+  isExcludedFromQueue?: boolean; // Para quando for excluído apenas da fila
   
   // Novos campos de controle lógico
   isOnGround?: boolean; // Se já pousou (Status SOLO)
@@ -166,6 +167,8 @@ export interface FlightData {
   isPinned?: boolean; // Se o voo está fixado no topo
   isHiddenFromGrid?: boolean; // Se foi limpo do grid mas deve permanecer no relatório
   isMeshFlight?: boolean; // Se é um voo da malha base não ativado
+  assignmentTime?: Date; // Hr.D (Hora de designação)
+  assignedByLt?: string; // LT (Líder que designou)
 }
 
 export type ViewState = 'GRID_OPS' | 'SHIFT_OPERATORS' | 'OPERATIONAL_MESH' | 'REPORTS' | 'FLEET';

@@ -11,7 +11,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isDarkMode, onClose, o
     return (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center animate-in fade-in">
             <div className={`w-full max-w-md rounded-xl shadow-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} overflow-hidden animate-in zoom-in-95 duration-200`}>
-                <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#2C864C] bg-[#2C864C]'}`}>
+                <div className={`flex justify-between items-center p-6 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#004D24] bg-[#004D24]'}`}>
                     <div>
                         <h3 className="text-lg font-bold text-white uppercase tracking-wider">Importar Malha</h3>
                         <p className={`text-xs mt-1 ${isDarkMode ? 'text-slate-400' : 'text-emerald-100'}`}>Carregue dados de voos em lote</p>

@@ -39,7 +39,7 @@ export const DelayJustificationModal: React.FC<DelayJustificationModalProps> = (
     return (
         <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
             <div className={`${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] rounded-[8px] w-[500px] shadow-[0_0_50px_rgba(245,158,11,0.2)] animate-in zoom-in-95 overflow-hidden`}>
-                <div className={`flex items-center gap-4 p-8 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#2C864C] bg-[#2C864C]'}`}>
+                <div className={`flex items-center gap-4 p-8 border-b ${isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-[#004D24] bg-[#004D24]'}`}>
                     <div className="w-12 h-12 rounded-md bg-amber-500/10 flex items-center justify-center border border-amber-500/30 text-amber-500">
                         <TimerOff size={24} />
                     </div>

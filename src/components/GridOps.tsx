@@ -16,11 +16,26 @@ import {
   MessageSquare, FileText, Plane, Pen, BusFront,
   PlaneLanding, ListOrdered, AlertTriangle, Play, Pause, XCircle, Plus, Anchor,
   MapPin, Eye, CheckCheck, X, Save, History, TimerOff, UserPlus, Building2, Bell, Zap,
-  MessageCircle, MoreVertical, Search, Settings, Upload, RefreshCw, Network
+  MessageCircle, MoreVertical, Search, Settings, Upload, RefreshCw, Network, Archive, Trash2
 } from 'lucide-react';
 
 type Tab = 'GERAL' | 'CHEGADA' | 'FILA' | 'DESIGNADOS' | 'ABASTECENDO' | 'FINALIZADO' | 'MALHA';
 type SortDirection = 'asc' | 'desc' | null;
+type MeshShift = 'TODOS' | 'MANHA' | 'TARDE' | 'NOITE';
+
+const isTimeInShift = (timeStr: string, shift: MeshShift) => {
+  if (shift === 'TODOS' || !timeStr) return true;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return true;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const totalMinutes = h * 60 + m;
+
+  if (shift === 'MANHA') return totalMinutes >= 300 && totalMinutes < 900;
+  if (shift === 'TARDE') return totalMinutes >= 840 && totalMinutes <= 1440;
+  if (shift === 'NOITE') return (totalMinutes >= 1260 && totalMinutes <= 1440) || (totalMinutes >= 0 && totalMinutes < 360);
+  return true;
+};
 
 interface SortConfig {
   key: keyof FlightData | null;
@@ -58,6 +73,7 @@ interface GridOpsProps {
     onOpenShiftOperators?: () => void;
     pendingAction?: 'CREATE' | 'IMPORT' | null;
     setPendingAction?: React.Dispatch<React.SetStateAction<'CREATE' | 'IMPORT' | null>>;
+    ltName: string;
 }
 
 const parseTime = (timeStr: string) => {
@@ -69,9 +85,21 @@ const parseTime = (timeStr: string) => {
 
 // Função para calcular diferença em minutos entre uma hora (HH:MM) e o momento atual
 const getMinutesDiff = (targetTimeStr: string) => {
+    if (!targetTimeStr) return 0;
     const target = parseTime(targetTimeStr);
     const current = new Date();
-    return (target.getTime() - current.getTime()) / 60000;
+    let diff = (target.getTime() - current.getTime()) / 60000;
+    
+    // Se a diferença for menor que -12 horas (ex: ETD 01:00 e agora 22:00), significa amanhã.
+    if (diff < -720) {
+        diff += 1440;
+    } 
+    // Se for maior que 12 horas (ex: ETD 23:00 e agora 01:00), significa ontem (atrasado)
+    else if (diff > 720) {
+        diff -= 1440;
+    }
+    
+    return diff;
 };
 const ICAO_CITIES: Record<string, string> = {
   'SBGL': 'GALEÃO',
@@ -150,11 +178,13 @@ export const GridOps: React.FC<GridOpsProps> = ({
     setMeshFlights,
     onOpenShiftOperators,
     pendingAction,
-    setPendingAction
+    setPendingAction,
+    ltName
 }) => {
   const { isDarkMode } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [activeShift, setActiveShift] = useState<MeshShift>('TODOS');
   
   useEffect(() => {
     // Simulate data fetching
@@ -198,6 +228,213 @@ export const GridOps: React.FC<GridOpsProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   
+  // NEW: Spreadsheet inline editing states
+  const [focusedCell, setFocusedCell] = useState<{ rowId: string; col: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ rowId: string; col: string } | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  useEffect(() => {
+    if (focusedCell) {
+      if (editingCell?.rowId === focusedCell.rowId && editingCell?.col === focusedCell.col) {
+        const input = tableRef.current?.querySelector(`tr[data-rowid="${focusedCell.rowId}"] td[data-colkey="${focusedCell.col}"] input`) as HTMLInputElement;
+        if (input && document.activeElement !== input) {
+          input.focus();
+        }
+      } else {
+        const cell = tableRef.current?.querySelector(`tr[data-rowid="${focusedCell.rowId}"] td[data-colkey="${focusedCell.col}"] div`) as HTMLDivElement;
+        if (cell && document.activeElement !== cell) {
+          cell.focus();
+        }
+      }
+    }
+  }, [focusedCell, editingCell]);
+
+  const handleFieldChange = (id: string, field: keyof FlightData, value: string) => {
+    onUpdateFlights(prev => prev.map(f => {
+      if (f.id === id) {
+        let newValue: any = value.toUpperCase();
+        
+        if (field === 'eta' || field === 'etd' || field === 'actualArrivalTime' || field === 'designationTime') {
+          newValue = value.replace(/[^0-9]/g, '');
+          if (newValue.length > 2) {
+            newValue = `${newValue.slice(0, 2)}:${newValue.slice(2, 4)}`;
+          }
+          if (newValue.length > 5) newValue = newValue.slice(0, 5);
+        } else if (field === 'fuelStatus' || field === 'volume' || field === 'maxFlowRate') {
+          newValue = parseFloat(value) || 0;
+        }
+
+        const updatedFlight = { ...f, [field]: newValue };
+        
+        // Sincronização Bilateral com a Malha Base
+        if (setMeshFlights) {
+          setMeshFlights(prevMesh => prevMesh.map(m => {
+            const flightIdBase = id.replace(/^mesh-\d+-/, ''); // Extract original mesh.id from flight id
+            const isIdMatch = id === m.id || flightIdBase === m.id || flightIdBase === m.id.replace(/^mesh-\d+-/, '');
+            
+            const isFallbackMatch = !!(f.departureFlightNumber && m.departureFlightNumber && f.departureFlightNumber === m.departureFlightNumber);
+            
+            if (isIdMatch || isFallbackMatch) {
+                return { ...m, [field]: newValue } as any;
+            }
+            return m;
+          }));
+        }
+
+        return updatedFlight;
+      }
+      return f;
+    }));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, rowId: string, colKey: string, rowIndex: number, colIndex: number) => {
+    const isEditing = editingCell?.rowId === rowId && editingCell?.col === colKey;
+    let targetTd = e.currentTarget as HTMLElement;
+    if (targetTd.tagName !== 'TD') {
+        targetTd = targetTd.closest('td') as HTMLElement;
+    }
+    const currentTr = targetTd?.parentElement as HTMLTableRowElement;
+    if (!currentTr) return;
+    const tbody = currentTr.parentElement as HTMLTableSectionElement;
+    if (!tbody) return;
+
+    const navigate = (newRowIndex: number, newColIndex: number, preferEditing = false, horizontalDirection: 1 | -1 | 0 = 0) => {
+      let targetRow = Array.from(tbody.children).find(el => parseInt(el.getAttribute('data-rowindex') || '-1') === newRowIndex) as HTMLTableRowElement;
+      
+      let nextRowIndex = newRowIndex;
+      let nextColIndex = newColIndex;
+
+      if (horizontalDirection !== 0) {
+          while (true) {
+              if (!targetRow) break;
+              let targetCell = Array.from(targetRow.children).find(el => parseInt(el.getAttribute('data-colindex') || '-1') === nextColIndex) as HTMLElement;
+              
+              if (!targetCell) {
+                  if (horizontalDirection === 1) {
+                      nextRowIndex += 1;
+                      nextColIndex = 0;
+                  } else {
+                      nextRowIndex -= 1;
+                      const prevRow = Array.from(tbody.children).find(el => parseInt(el.getAttribute('data-rowindex') || '-1') === nextRowIndex) as HTMLTableRowElement;
+                      if (!prevRow) break;
+                      nextColIndex = Array.from(prevRow.children)
+                          .filter(c => c.hasAttribute('data-colindex'))
+                          .map(c => parseInt(c.getAttribute('data-colindex')!))
+                          .reduce((max, val) => Math.max(max, val), 0);
+                  }
+                  targetRow = Array.from(tbody.children).find(el => parseInt(el.getAttribute('data-rowindex') || '-1') === nextRowIndex) as HTMLTableRowElement;
+                  continue;
+              }
+
+              if (targetCell.getAttribute('data-editable') === 'true') {
+                  break;
+              } else {
+                  nextColIndex += horizontalDirection;
+              }
+          }
+      }
+
+      if (targetRow) {
+        const targetCell = Array.from(targetRow.children).find(el => parseInt(el.getAttribute('data-colindex') || '-1') === nextColIndex) as HTMLElement;
+        if (targetCell && (horizontalDirection !== 0 ? true : targetCell.getAttribute('data-editable') === 'true')) {
+          const newRowId = targetCell.getAttribute('data-rowid');
+          const newColKey = targetCell.getAttribute('data-colkey');
+          if (newRowId && newColKey) {
+            setFocusedCell({ rowId: newRowId, col: newColKey });
+            if (preferEditing) {
+              setEditingCell({ rowId: newRowId, col: newColKey });
+            } else {
+              setEditingCell(null);
+            }
+            setTimeout(() => {
+                const innerEl = targetCell.querySelector('input') || targetCell.querySelector('div');
+                if (innerEl) (innerEl as HTMLElement).focus();
+                else targetCell.focus();
+            }, 0);
+          }
+        }
+      }
+    };
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        navigate(rowIndex + 1, colIndex);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        navigate(rowIndex - 1, colIndex);
+        break;
+      case 'ArrowRight':
+        if (!isEditing) {
+          e.preventDefault();
+          navigate(rowIndex, colIndex + 1, false, 1);
+        } else {
+          const input = e.target as HTMLInputElement;
+          if (input && input.selectionStart === input.value.length) {
+            e.preventDefault();
+            navigate(rowIndex, colIndex + 1, false, 1);
+            setEditingCell(null);
+          }
+        }
+        break;
+      case 'ArrowLeft':
+        if (!isEditing) {
+          e.preventDefault();
+          navigate(rowIndex, colIndex - 1, false, -1);
+        } else {
+          const input = e.target as HTMLInputElement;
+          if (input && input.selectionStart === 0) {
+            e.preventDefault();
+            navigate(rowIndex, colIndex - 1, false, -1);
+            setEditingCell(null);
+          }
+        }
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (isEditing) {
+          navigate(rowIndex, colIndex + 1, false, 1);
+          setEditingCell(null);
+        } else if (targetTd?.getAttribute('data-editable') === 'true') {
+          setEditingCell({ rowId, col: colKey });
+        } else {
+          // If not editable, just move right like excel
+          navigate(rowIndex, colIndex + 1, false, 1);
+        }
+        break;
+      case 'Tab':
+        e.preventDefault();
+        setEditingCell(null);
+        if (e.shiftKey) {
+          navigate(rowIndex, colIndex - 1, false, -1);
+        } else {
+          navigate(rowIndex, colIndex + 1, false, 1);
+        }
+        break;
+      case 'Escape':
+        if (isEditing) {
+          e.preventDefault();
+          setEditingCell(null);
+        }
+        break;
+      case 'Backspace':
+      case 'Delete':
+        if (!isEditing) {
+          e.preventDefault();
+          handleFieldChange(rowId, colKey as keyof FlightData, '');
+        }
+        break;
+      default:
+        if (!isEditing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+          e.preventDefault();
+          handleFieldChange(rowId, colKey as keyof FlightData, e.key.toUpperCase());
+          setEditingCell({ rowId, col: colKey });
+        }
+        break;
+    }
+  };
+
   // Delay Justification Modal States
   const [delayModalFlightId, setDelayModalFlightId] = useState<string | null>(null);
   const [delayReasonCode, setDelayReasonCode] = useState('');
@@ -210,6 +447,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
   const [cancelModalFlight, setCancelModalFlight] = useState<FlightData | null>(null);
+  const [deleteModalFlight, setDeleteModalFlight] = useState<FlightData | null>(null);
   
   // New Confirmation Modals
   const [confirmStartModalFlight, setConfirmStartModalFlight] = useState<FlightData | null>(null);
@@ -256,7 +494,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
                 const minutesToETD = getMinutesDiff(f.etd);
                 // LÓGICA DE AUTOMATIZAÇÃO PARA FILA:
                 // Só move para fila se NÃO tiver operador e estiver no prazo crítico
-                if (f.status === FlightStatus.CHEGADA && minutesToETD < 60 && !f.operator) {
+                if (f.status === FlightStatus.CHEGADA && minutesToETD < 60 && !f.operator && !f.isExcludedFromQueue) {
                     const newLog = createNewLog('SISTEMA', 'Voo movido para FILA automaticamente (ETD < 60min).', 'SISTEMA');
                     return { 
                         ...f, 
@@ -265,15 +503,6 @@ export const GridOps: React.FC<GridOpsProps> = ({
                     };
                 }
                 
-                // Simulação de novas informações (ETA update, mensagens, etc)
-                if (Math.random() < 0.05) { // 5% chance per flight per 5s
-                    const randomChange = Math.random();
-                    if (randomChange < 0.3) {
-                        // Update ETA slightly
-                        // Logic omitted for brevity, keeping simple
-                    }
-                }
-
                 return f;
             });
         });
@@ -290,6 +519,8 @@ export const GridOps: React.FC<GridOpsProps> = ({
             handleSubmitDelay();
         } else if (cancelModalFlight) {
             confirmCancelFlight();
+        } else if (deleteModalFlight) {
+            confirmDeleteFlight();
         } else if (confirmStartModalFlight) {
             handleConfirmStart();
         } else if (confirmFinishModalFlight) {
@@ -305,7 +536,8 @@ export const GridOps: React.FC<GridOpsProps> = ({
       observationModalFlight, newObservation, 
       delayModalFlightId, delayReasonCode, 
       cancelModalFlight, confirmStartModalFlight, 
-      confirmFinishModalFlight, confirmRemoveOperatorFlight
+      confirmFinishModalFlight, confirmRemoveOperatorFlight,
+      deleteModalFlight
   ]);
 
   const addToast = (title: string, message: string, type: 'success' | 'info' | 'warning' = 'info') => {
@@ -322,18 +554,47 @@ export const GridOps: React.FC<GridOpsProps> = ({
 
   const visibleFlights = useMemo(() => flights.filter(f => !f.isHiddenFromGrid), [flights]);
 
+  const shiftedFlights = useMemo(() => 
+    visibleFlights.filter(f => isTimeInShift(f.etd, activeShift)), 
+    [visibleFlights, activeShift]
+  );
+
+  const searchFilteredFlights = useMemo(() => {
+    if (!globalSearchTerm) return shiftedFlights;
+    const lowerTerms = globalSearchTerm.toLowerCase().trim().split(/\s+/);
+    return shiftedFlights.filter(f => {
+        const city = ICAO_CITIES[f.destination as string] || '';
+        const allFields = [
+            f.flightNumber, f.departureFlightNumber, f.airline, f.airlineCode, f.model, 
+            f.registration, f.origin, f.destination, f.eta, f.etd, f.actualArrivalTime,
+            f.positionId, f.positionType, f.pitId, f.operator,
+            f.supportOperator, f.fleet, f.fleetType, f.vehicleType, 
+            city,
+            (f.airlineCode || '') + '-' + (f.flightNumber || ''),
+            (f.airlineCode || '') + (f.flightNumber || ''),
+            (f.airlineCode || '') + '-' + (f.departureFlightNumber || ''),
+            (f.airlineCode || '') + (f.departureFlightNumber || '')
+        ];
+        const searchString = allFields
+            .filter(Boolean)
+            .map(val => String(val).toLowerCase())
+            .join(' | ');
+        
+        return lowerTerms.every(term => searchString.includes(term));
+    });
+  }, [shiftedFlights, globalSearchTerm]);
+
   const stats = useMemo(() => ({
-    total: visibleFlights.length,
-    chegada: visibleFlights.filter(f => {
+    total: searchFilteredFlights.filter(f => f.status !== FlightStatus.FINALIZADO && f.status !== FlightStatus.CANCELADO).length,
+    chegada: searchFilteredFlights.filter(f => {
         const minutesToEta = getMinutesDiff(f.eta);
         return f.status === FlightStatus.CHEGADA && !(f.isOnGround && f.positionId) && minutesToEta <= 120;
     }).length,
-    // Correção: Fila conta apenas quem está no status FILA e SEM operador (segurança redundante)
-    fila: visibleFlights.filter(f => f.status === FlightStatus.FILA && !f.operator).length,
-    designados: visibleFlights.filter(f => f.status === FlightStatus.DESIGNADO).length,
-    abastecendo: visibleFlights.filter(f => f.status === FlightStatus.ABASTECENDO).length,
-    finalizados: visibleFlights.filter(f => f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO).length,
-  }), [visibleFlights]);
+    fila: searchFilteredFlights.filter(f => f.status === FlightStatus.FILA && !f.operator).length,
+    designados: searchFilteredFlights.filter(f => f.status === FlightStatus.DESIGNADO).length,
+    abastecendo: searchFilteredFlights.filter(f => f.status === FlightStatus.ABASTECENDO).length,
+    finalizados: searchFilteredFlights.filter(f => f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO).length,
+  }), [searchFilteredFlights]);
 
   const tabs: { id: Tab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: 'GERAL', label: 'MALHA GERAL', icon: LayoutGrid, count: stats.total },
@@ -345,11 +606,11 @@ export const GridOps: React.FC<GridOpsProps> = ({
   ];
 
   const filteredData = useMemo(() => {
-    let base = visibleFlights;
+    let base = searchFilteredFlights;
     
     switch (activeTab) {
       case 'CHEGADA': 
-        base = visibleFlights.filter(f => {
+        base = searchFilteredFlights.filter(f => {
             const minutesToEta = getMinutesDiff(f.eta);
             return f.status === FlightStatus.CHEGADA && 
                    !(f.isOnGround && f.positionId) && 
@@ -357,35 +618,24 @@ export const GridOps: React.FC<GridOpsProps> = ({
         });
         break;
       case 'FILA': 
-        // REGRA DE OURO: ABA FILA NÃO PODE TER OPERADOR
-        base = visibleFlights.filter(f => f.status === FlightStatus.FILA && !f.operator);
+        base = searchFilteredFlights.filter(f => f.status === FlightStatus.FILA && !f.operator);
         break;
-      case 'DESIGNADOS': base = visibleFlights.filter(f => f.status === FlightStatus.DESIGNADO); break;
-      case 'ABASTECENDO': base = visibleFlights.filter(f => f.status === FlightStatus.ABASTECENDO); break;
-      case 'FINALIZADO': base = visibleFlights.filter(f => f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO); break;
+      case 'DESIGNADOS': base = searchFilteredFlights.filter(f => f.status === FlightStatus.DESIGNADO); break;
+      case 'ABASTECENDO': base = searchFilteredFlights.filter(f => f.status === FlightStatus.ABASTECENDO); break;
+      case 'FINALIZADO': base = searchFilteredFlights.filter(f => f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO); break;
       case 'GERAL': 
-        base = visibleFlights.filter(f => {
+        base = searchFilteredFlights.filter(f => {
             if (f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO) {
                 return false;
             }
             return true;
         });
         break;
-      default: base = visibleFlights;
+      default: base = searchFilteredFlights;
     }
 
-    if (!globalSearchTerm) return base;
-
-    const lowerTerm = globalSearchTerm.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return base.filter(f => {
-        const searchString = [
-            f.flightNumber, f.registration, f.positionId, f.airline, f.operator, 
-            f.eta, f.etd, f.vehicleType, f.origin, f.destination, f.status, f.fleet, f.model
-        ].map(val => String(val || '').toLowerCase().replace(/[^a-z0-9]/g, '')).join(' ');
-        
-        return searchString.includes(lowerTerm);
-    });
-  }, [activeTab, visibleFlights, archivedIds, globalSearchTerm]);
+    return base;
+  }, [activeTab, searchFilteredFlights, archivedIds]);
 
   const isStreamlinedView = ['FILA', 'DESIGNADOS', 'ABASTECENDO'].includes(activeTab);
   const isFinishedView = activeTab === 'FINALIZADO';
@@ -395,6 +645,59 @@ export const GridOps: React.FC<GridOpsProps> = ({
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
     else if (sortConfig.key === key && sortConfig.direction === 'desc') direction = null;
     setSortConfig({ key: direction ? key : null, direction });
+  };
+
+  const renderEditableCell = (row: FlightData, colKey: keyof FlightData, value: string | number, className: string = "", rowIndex: number, colIndex: number, editable: boolean = true) => {
+    const isFocused = focusedCell?.rowId === row.id && focusedCell?.col === colKey;
+    const isEditing = editable && editingCell?.rowId === row.id && editingCell?.col === colKey;
+
+    return (
+      <td 
+        data-rowid={row.id}
+        data-colkey={colKey as string}
+        data-rowindex={rowIndex}
+        data-colindex={colIndex}
+        data-editable={editable}
+        className={`
+          p-0 border-y border-l transition-all relative h-10 outline-none
+          ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'}
+        `}
+      >
+        {isEditing ? (
+          <input 
+            type="text"
+            autoFocus
+            onFocus={(e) => e.target.select()}
+            className={`absolute inset-0 w-full h-full text-center px-1 font-mono outline-none border-none text-[13px] uppercase font-bold text-inherit ${className} ${isDarkMode ? 'bg-slate-900 shadow-inner' : 'bg-white font-black text-slate-900'}`}
+            value={value}
+            onChange={(e) => handleFieldChange(row.id, colKey, e.target.value)}
+            onBlur={() => setEditingCell(null)}
+            onKeyDown={(e) => handleKeyDown(e, row.id, colKey as string, rowIndex, colIndex)}
+          />
+        ) : (
+          <div 
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isFocused) {
+                if (editable) setEditingCell({ rowId: row.id, col: colKey });
+              } else {
+                setFocusedCell({ rowId: row.id, col: colKey });
+                setEditingCell(null);
+              }
+            }}
+            onKeyDown={(e) => handleKeyDown(e, row.id, colKey as string, rowIndex, colIndex)}
+            className={`w-full h-full px-1 flex items-center ${colKey === 'airlineCode' ? 'justify-start ml-2' : 'justify-center'} font-mono text-[12px] select-none cursor-default outline-none ${isFocused ? 'ring-2 ring-indigo-500 ring-inset z-20 shadow-xl ' + (editable ? 'bg-indigo-600 text-white shadow-indigo-500/20' : 'bg-slate-500/10') : ''} ${className}`}
+          >
+            {colKey === 'airlineCode' ? (
+              <AirlineLogo airlineCode={row.airlineCode} className={isFocused && editable && isDarkMode ? 'invert brightness-200 justify-start' : 'justify-start'} />
+            ) : (
+              value || '--'
+            )}
+          </div>
+        )}
+      </td>
+    );
   };
 
   const sortedData = useMemo(() => {
@@ -467,6 +770,19 @@ export const GridOps: React.FC<GridOpsProps> = ({
       e.stopPropagation();
       setCancelModalFlight(flight);
       setOpenMenuId(null);
+  };
+
+  const handleDeleteFlight = (flight: FlightData, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setDeleteModalFlight(flight);
+      setOpenMenuId(null);
+  };
+
+  const confirmDeleteFlight = () => {
+      if (!deleteModalFlight) return;
+      onUpdateFlights(prev => prev.filter(f => f.id !== deleteModalFlight.id));
+      addToast('VOO EXCLUÍDO', `Voo ${deleteModalFlight.flightNumber || deleteModalFlight.departureFlightNumber} foi removido do sistema.`, 'info');
+      setDeleteModalFlight(null);
   };
 
   const confirmCancelFlight = () => {
@@ -627,7 +943,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
           const operator = operators.find(op => op.id === idToUse);
           if (!operator) return;
 
-          const newLog = createNewLog('MANUAL', `Operador ${operator.warName} designado manualmente.`, 'GESTOR_MESA');
+          const newLog = createNewLog('MANUAL', `Operador ${operator.warName} designado manualmente por ${ltName}.`, 'GESTOR_MESA');
           
           // IMPORTANTE: Ao designar, o status vai para DESIGNADO, removendo automaticamente da FILA
           onUpdateFlights(prev => prev.map(f => f.id === assignModalFlight.id ? { 
@@ -637,6 +953,8 @@ export const GridOps: React.FC<GridOpsProps> = ({
               fleet: operator.assignedVehicle,
               fleetType: operator.fleetCapability as any,
               designationTime: new Date(),
+              assignmentTime: new Date(),
+              assignedByLt: ltName,
               logs: [...(f.logs || []), newLog]
           } : f));
 
@@ -671,13 +989,12 @@ export const GridOps: React.FC<GridOpsProps> = ({
       // Get all active missions to determine status
       const activeMissions = flights.filter(f => f.status !== 'FINALIZADO' && f.status !== 'CANCELADO');
 
-      return operators.filter(op => {
-          // No modal de designação só poderá conter operadores "com frota vinculado a ele"
-          if (!op.assignedVehicle) return false;
-          return true;
-      }).map(op => {
-          // Find if operator has an active mission
-          const mission = activeMissions.find(m => m.operator?.toLowerCase() === op.warName.toLowerCase() || m.supportOperator?.toLowerCase() === op.warName.toLowerCase());
+      return operators.map(op => {
+          // Find if operator has an active mission in ANOTHER flight
+          const mission = activeMissions.find(m => 
+              m.id !== flight.id && 
+              (m.operator?.toLowerCase() === op.warName.toLowerCase() || m.supportOperator?.toLowerCase() === op.warName.toLowerCase())
+          );
           
           let dynamicStatus = op.status;
           if (mission) {
@@ -771,6 +1088,10 @@ export const GridOps: React.FC<GridOpsProps> = ({
             label: 'STAND-BY', 
             color: isDarkMode ? 'text-slate-400 bg-slate-800 border-slate-600' : 'text-slate-600 bg-slate-100 border-slate-300' 
         };
+        if (minutesToETD < 0) return { 
+            label: 'ATRASADO', 
+            color: isDarkMode ? 'text-red-500 bg-red-900/50 border-red-500' : 'text-red-700 bg-red-100 border-red-500' 
+        };
         if (minutesToETD < 20) return { 
             label: '-20M CRÍTICO', 
             color: isDarkMode ? 'text-red-500 bg-red-500/20 border-red-500' : 'text-red-700 bg-red-50 border-red-500' 
@@ -840,17 +1161,17 @@ export const GridOps: React.FC<GridOpsProps> = ({
     const isActive = sortConfig.key === columnKey;
     return (
       <th 
-        className={`px-3 py-3 sticky top-0 cursor-pointer select-none transition-all group z-50 first:rounded-l-[4px] last:rounded-r-[4px] grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-white border-slate-200 shadow-none'} ${className}`}
+        className={`px-1 py-1.5 sticky top-0 cursor-pointer select-none transition-all group z-50 first:rounded-l-[2px] last:rounded-r-[2px] grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-[#2D8E48] border-[#29824a] text-white shadow-none'} ${className}`}
         onClick={() => handleSort(columnKey)}
       >
-        <div className={`flex items-center gap-1.5 ${className.includes('text-center') ? 'justify-center' : 'justify-start'}`}>
-          <span className={`font-black text-[9px] uppercase tracking-wider transition-colors ${isActive ? (isDarkMode ? 'text-emerald-400' : 'text-emerald-600') : (isDarkMode ? 'text-white' : 'text-slate-700')}`}>
+        <div className={`flex items-center gap-1 ${className.includes('text-center') ? 'justify-center' : 'justify-start'}`}>
+          <span className={`font-black text-[9px] uppercase tracking-wider transition-colors ${isActive ? (isDarkMode ? 'text-emerald-400' : 'text-slate-100') : (isDarkMode ? 'text-white' : 'text-white')}`}>
             {label}
           </span>
           <div className="flex items-center justify-center transition-all">
             {isActive ? (
-                sortConfig.direction === 'asc' ? <ArrowUp size={10} className={isDarkMode ? "text-emerald-500" : "text-emerald-600"} /> : <ArrowDown size={10} className={isDarkMode ? "text-emerald-500" : "text-emerald-600"} />
-            ) : <ArrowUpDown size={8} className={isDarkMode ? "text-white/20 group-hover:text-white/60" : "text-slate-400 group-hover:text-slate-600"} />}
+                sortConfig.direction === 'asc' ? <ArrowUp size={10} className={isDarkMode ? "text-emerald-500" : "text-slate-100"} /> : <ArrowDown size={10} className={isDarkMode ? "text-emerald-500" : "text-slate-100"} />
+            ) : <ArrowUpDown size={8} className={isDarkMode ? "text-white/20 group-hover:text-white/60" : "text-slate-200 group-hover:text-white"} />}
           </div>
         </div>
       </th>
@@ -883,46 +1204,79 @@ export const GridOps: React.FC<GridOpsProps> = ({
   }
 
   const optionsDropdownContent = (
-    <div className="relative z-[100]" ref={optionsMenuRef}>
+    <div className="relative" ref={optionsMenuRef}>
         <button 
             onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
-            className={`flex items-center gap-2 px-6 py-2 rounded-md border border-[#FEDC00] transition-all font-bold uppercase tracking-wider text-[11px] bg-[#FEDC00] text-[#4e4141] hover:bg-[#e5c600] shadow-sm btn-options-subheader`}
+            className={`flex items-center gap-2 px-6 py-2 rounded-md border border-[#FEDC00] transition-all font-bold uppercase tracking-wider text-[11px] bg-[#FEDC00] text-[#4e4141] hover:bg-[#e5c600] shadow-sm`}
         >
             <span>Opções</span>
+            <Settings size={14} />
         </button>
 
         {showOptionsDropdown && (
-            <div className={`absolute right-0 top-10 w-56 ${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-emerald-500/30'} border-[0.5px] rounded-2xl shadow-2xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2`}>
-                <div className="p-2 space-y-1">
+            <div className={`absolute right-0 top-11 w-56 ${isDarkMode ? 'bg-slate-900 border-emerald-500/30 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]' : 'bg-white border-emerald-500/30 shadow-xl'} border rounded-xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2`}>
+                <div className="p-1.5 space-y-0.5">
+                    <div className="px-3 py-2 border-b border-white/5 mb-1">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ações da Malha</span>
+                    </div>
                     <button 
                         onClick={() => {
-                            setIsCreateModalOpen(true);
+                            if (onUpdateFlights && meshFlights) {
+                                onUpdateFlights(prev => {
+                                    // Manter voos existentes que já foram processados
+                                    const existingIds = new Set(prev.map(f => f.id));
+                                    const newFlights = meshFlights.map(m => {
+                                        if (existingIds.has(m.id)) return prev.find(f => f.id === m.id)!;
+                                        return {
+                                            id: m.id,
+                                            flightNumber: '--',
+                                            departureFlightNumber: m.departureFlightNumber,
+                                            airline: m.airline,
+                                            airlineCode: m.airlineCode,
+                                            model: m.model || '',
+                                            registration: m.registration || '',
+                                            origin: '',
+                                            destination: m.destination,
+                                            eta: m.eta || '--:--',
+                                            etd: m.etd,
+                                            actualArrivalTime: m.actualArrivalTime,
+                                            positionId: m.positionId || '',
+                                            status: FlightStatus.CHEGADA,
+                                            logs: []
+                                        };
+                                    });
+                                    return newFlights as any[]; // Type cast handled by external context
+                                });
+                                addToast('SINCRONIZAÇÃO', 'Voos da Malha Base sincronizados!', 'success');
+                            }
                             setShowOptionsDropdown(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-400' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'}`}
                     >
-                        <Plus size={16} />
-                        Criar Voo
+                        <RefreshCw size={14} />
+                        Sincronizar Dados
                     </button>
                     <button 
                         onClick={() => {
-                            setIsImportModalOpen(true);
+                            handleClearFinished();
                             setShowOptionsDropdown(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-400' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-red-500/10 hover:text-red-400' : 'text-slate-600 hover:bg-red-50 hover:text-red-400'}`}
                     >
-                        <Upload size={16} />
-                        Importar
+                        <Archive size={14} />
+                        Arquivar Finalizados
                     </button>
                     <button 
                         onClick={() => {
-                            if (onOpenShiftOperators) onOpenShiftOperators();
+                            // Limpar toda a malha operacional
+                            onUpdateFlights([]);
+                            addToast('MALHA GERAL', 'Toda a malha operacional foi removida.', 'warning');
                             setShowOptionsDropdown(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-blue-500/10 hover:text-blue-400' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-600'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-red-600 hover:bg-red-50 hover:text-red-700'}`}
                     >
-                        <UserPlus size={16} />
-                        Operadores do Turno
+                        <Trash2 size={14} />
+                        Limpar Malha Geral
                     </button>
                 </div>
             </div>
@@ -931,7 +1285,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
   );
 
   const subheaderContent = (
-      <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#2C864C] border-white/10'} z-[60] w-full`}>
+      <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#3CA317] border-transparent text-white'} z-[60] w-full`}>
         <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
                 <div>
@@ -939,12 +1293,24 @@ export const GridOps: React.FC<GridOpsProps> = ({
                 </div>
             </div>
 
-            <div className="relative w-72 h-9 ml-4">
+            <div className="flex items-center gap-2 ml-6 bg-black/20 p-1 rounded border border-white/10 w-[270px] h-10">
+                {(['TODOS', 'MANHA', 'TARDE', 'NOITE'] as MeshShift[]).map(shift => (
+                    <button
+                        key={shift}
+                        onClick={() => setActiveShift(shift)}
+                        className={`px-3 py-1.5 rounded text-[9px] font-black uppercase tracking-widest transition-all h-full ${activeShift === shift ? 'bg-emerald-500 text-slate-950 flex-1' : 'text-emerald-100/50 hover:text-white flex-1'}`}
+                    >
+                        {shift}
+                    </button>
+                ))}
+            </div>
+
+            <div className="relative w-[180px] h-9 ml-6">
                 <div className={`absolute inset-0 bg-white shadow-sm border ${isDarkMode ? 'border-slate-700' : 'border-white/20'} rounded flex items-center transition-all`}>
                     <Search size={14} className="shrink-0 text-slate-800 ml-3" />
                     <input 
                         type="text" 
-                        placeholder="BUSCAR VOO NA MALHA..." 
+                        placeholder="Pesquise..." 
                         className="bg-transparent border-none outline-none text-[10px] text-slate-900 placeholder:text-slate-500 font-mono uppercase w-full px-3 transition-all h-full rounded"
                         value={globalSearchTerm}
                         onChange={(e) => onUpdateSearch && onUpdateSearch(e.target.value)}
@@ -960,6 +1326,8 @@ export const GridOps: React.FC<GridOpsProps> = ({
                 </div>
             </div>
         </div>
+
+        {optionsDropdownContent}
       </div>
   );
 
@@ -968,7 +1336,6 @@ export const GridOps: React.FC<GridOpsProps> = ({
       
       {/* HEADER E TABS */}
       {portalTarget ? createPortal(subheaderContent, portalTarget) : subheaderContent}
-      {optionsPortalTarget ? createPortal(optionsDropdownContent, optionsPortalTarget) : null}
       <div className={`h-12 shrink-0 flex border-b ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'} z-30 overflow-hidden`}>
         <nav className="flex w-full">
                 {tabs.map((tab) => {
@@ -982,13 +1349,13 @@ export const GridOps: React.FC<GridOpsProps> = ({
                                 table-tab-btn
                                 flex-1 h-full px-2 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border-r ${isDarkMode ? 'border-slate-950/20' : 'border-slate-200'} last:border-r-0
                                 ${isActive 
-                                    ? (isDarkMode ? 'bg-slate-950 text-emerald-400 border-b-2 border-emerald-500' : 'bg-emerald-600 text-white border-b-2 border-emerald-700')
+                                    ? (isDarkMode ? 'bg-slate-950 text-emerald-400 border-b-2 border-emerald-500' : 'bg-[#329858] text-white border-b-0')
                                     : (isDarkMode ? 'text-slate-500 hover:bg-slate-800 hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900')}
                             `}
                         >
                             {tab.label}
                             {tab.count !== undefined && (
-                                <span className={`flex items-center justify-center px-1.5 min-w-[18px] h-4 text-[9px] font-black rounded-sm ${isActive ? (isDarkMode ? 'bg-emerald-500 text-slate-950' : 'bg-white text-emerald-600') : (isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}`}>
+                                <span className={`flex items-center justify-center px-1.5 min-w-[18px] h-4 text-[9px] font-black rounded-sm ${isActive ? (isDarkMode ? 'bg-emerald-500 text-slate-950' : 'bg-white text-[#2D8E48]') : (isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}`}>
                                     {tab.count}
                                 </span>
                             )}
@@ -999,45 +1366,66 @@ export const GridOps: React.FC<GridOpsProps> = ({
           </div>
 
       {/* GRID CONTAINER */}
-      <div className={`flex-1 overflow-hidden relative ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'} pt-2`}>
-            <div className="w-full h-full overflow-auto custom-scrollbar relative">
-              <table className="w-full text-left border-separate border-spacing-x-0 border-spacing-y-1 px-2 grid-ops-table -mt-1">
+      <div className={`flex-1 min-w-0 overflow-hidden relative ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'} pt-2`}>
+            <div className="w-full h-full overflow-auto min-w-0 custom-scrollbar relative">
+              <table ref={tableRef} className="w-full text-left border-separate border-spacing-x-0 border-spacing-y-1 px-2 grid-ops-table -mt-1">
                   <thead className="grid-ops-thead relative z-50">
-                      <tr id="grid-header-container" className="h-12">
+                      <tr id="grid-header-container" className="h-10">
                     {/* LAYOUT CONDICIONAL DE COLUNAS */}
-                    {isStreamlinedView ? (
+                    {activeTab === 'FILA' ? (
                         <>
-                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-24" />
+                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-20" />
                             <SortableHeader label="V.SAÍDA" columnKey="departureFlightNumber" className="text-center" />
                             <SortableHeader label="ICAO" columnKey="destination" className="text-center" />
-                            <SortableHeader label="CID" columnKey="destination" className="text-center" />
-                            <SortableHeader label="PREFIXO" columnKey="registration" className="text-center" />
-                            <SortableHeader label="POS" columnKey="positionId" className="text-center" />
-                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center" />
-                            <SortableHeader label="ETD" columnKey="etd" className="text-center" />
-                            <SortableHeader label="OPERADOR" columnKey="operator" className="" />
-                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center" />
-                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center" />
+                            <SortableHeader label="CID" columnKey="destination" className="text-center w-12" />
+                            <SortableHeader label="PREFIXO" columnKey="registration" className="text-center w-16" />
+                            <SortableHeader label="POS" columnKey="positionId" className="text-center w-12" />
+                            <SortableHeader label="ETD" columnKey="etd" className="text-center w-16" />
+                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center w-16" />
+                            <SortableHeader label="ETA" columnKey="eta" className="text-center w-16" />
+                            <SortableHeader label="OPERADOR" columnKey="operator" className="text-left pl-2 w-28" />
+                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center w-16" />
+                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center w-16" />
+                        </>
+                    ) : isStreamlinedView ? (
+                        <>
+                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-[10%]" />
+                            <SortableHeader label="V.SAÍDA" columnKey="departureFlightNumber" className="text-center w-[10%]" />
+                            <SortableHeader label="ICAO" columnKey="destination" className="text-center w-[10%]" />
+                            <SortableHeader label="CID" columnKey="destination" className={`text-center ${activeTab === 'DESIGNADOS' ? 'w-[15%]' : 'w-12'}`} />
+                            <SortableHeader label="PREFIXO" columnKey="registration" className="text-center w-[10%]" />
+                            <SortableHeader label="POS" columnKey="positionId" className={`text-center ${activeTab === 'DESIGNADOS' ? 'w-[10%]' : 'w-12'}`} />
+                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center w-16" />
+                            <SortableHeader label="ETD" columnKey="etd" className="text-center w-[10%]" />
+                            <SortableHeader label="OPERADOR" columnKey="operator" className={`${activeTab === 'DESIGNADOS' ? 'text-left pl-2 w-[15%]' : 'text-left pl-2 w-[20%]'}`} />
+                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center w-[5%]" />
+                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center w-[5%]" />
+                            {activeTab === 'DESIGNADOS' && (
+                                <>
+                                    <SortableHeader label="HR.D" columnKey="assignmentTime" className="text-center w-16" />
+                                    <SortableHeader label="LT" columnKey="assignedByLt" className="text-left pl-2 w-28" />
+                                </>
+                            )}
                             {activeTab === 'ABASTECENDO' && (
                                 <SortableHeader label="VAZÃO" columnKey="maxFlowRate" className="text-center" />
                             )}
                         </>
                     ) : isFinishedView ? (
                         <>
-                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-24" />
+                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-20" />
                             <SortableHeader label="PREFIXO" columnKey="registration" className="text-center" />
                             <SortableHeader label="V.SAÍDA" columnKey="departureFlightNumber" className="text-center" />
                             <SortableHeader label="ICAO" columnKey="destination" className="text-center" />
-                            <SortableHeader label="CID" columnKey="destination" className="text-center" />
-                            <SortableHeader label="POS" columnKey="positionId" className="text-center" />
-                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center" />
-                            <SortableHeader label="ETD" columnKey="etd" className="text-center" />
-                            <SortableHeader label="OPERADOR" columnKey="operator" className="" />
-                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center" />
-                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center" />
-                            <th className={`px-3 py-3 sticky top-0 text-center z-50 grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-white border-slate-200 shadow-none'}`}>
+                            <SortableHeader label="CID" columnKey="destination" className="text-center w-12" />
+                            <SortableHeader label="POS" columnKey="positionId" className="text-center w-12" />
+                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center w-16" />
+                            <SortableHeader label="ETD" columnKey="etd" className="text-center w-16" />
+                            <SortableHeader label="OPERADOR" columnKey="operator" className="text-left pl-2 w-28" />
+                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center w-16" />
+                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center w-16" />
+                            <th className={`px-1 py-1 sticky top-0 text-center z-50 grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-[#2D8E48] border-[#29824a] text-white shadow-none'}`}>
                                 <div className="flex items-center justify-center gap-1.5">
-                                    <span className={`font-black text-[9px] uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-700'}`}>
+                                    <span className={`font-black text-[9px] uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-white'}`}>
                                         TAB
                                     </span>
                                 </div>
@@ -1046,31 +1434,35 @@ export const GridOps: React.FC<GridOpsProps> = ({
                         </>
                     ) : (
                         <>
-                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-24" />
+                            <SortableHeader label="COMP." columnKey="airlineCode" className="text-center w-20" />
                             <SortableHeader label="PREFIXO" columnKey="registration" className="text-center" />
                             <SortableHeader label="MODELO" columnKey="model" className="text-center" />
                             <SortableHeader label="V.CHEG" columnKey="flightNumber" className="text-center" />
                             <SortableHeader label="ETA" columnKey="eta" className="text-center" />
                             <SortableHeader label="V.SAÍDA" columnKey="departureFlightNumber" className="text-center" />
                             <SortableHeader label="ICAO" columnKey="destination" className="text-center" />
-                            <SortableHeader label="CID" columnKey="destination" className="text-center" />
-                            <SortableHeader label="POS" columnKey="positionId" className="text-center" />
-                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center" />
-                            <SortableHeader label="ETD" columnKey="etd" className="text-center" />
-                            <SortableHeader label="OPERADOR" columnKey="operator" className="" />
-                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center" />
-                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center" />
+                            <SortableHeader label="CID" columnKey="destination" className="text-center w-12" />
+                            <SortableHeader label="POS" columnKey="positionId" className="text-center w-12" />
+                            <SortableHeader label="CALÇO" columnKey="actualArrivalTime" className="text-center w-16" />
+                            <SortableHeader label="ETD" columnKey="etd" className="text-center w-16" />
+                            <SortableHeader label="OPERADOR" columnKey="operator" className="text-left pl-2 w-28" />
+                            <SortableHeader label="FROTA" columnKey="fleet" className="text-center w-16" />
+                            <SortableHeader label="FRT.TIPO" columnKey="fleet" className="text-center w-16" />
                             {activeTab === 'GERAL' && (
                                 <SortableHeader label="VAZÃO" columnKey="maxFlowRate" className="text-center" />
                             )}
                         </>
                     )}
                       
-                      <SortableHeader label="STATUS" columnKey="status" className="text-center" />
+                      {activeTab === 'DESIGNADOS' ? (
+                        <SortableHeader label="STATUS" columnKey="status" className="text-center w-36" />
+                      ) : (
+                        <SortableHeader label="STATUS" columnKey="status" className="text-center w-24" />
+                      )}
 
-                      <th className={`px-3 py-3 sticky top-0 text-center z-50 grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-white border-slate-200 shadow-none'} last:rounded-r-[4px] group`}>
+                      <th className={`px-1 py-1 sticky top-0 text-center z-50 grid-ops-header-th border-y ${isDarkMode ? 'bg-slate-950 border-slate-700/50 shadow-sm' : 'bg-[#2D8E48] border-[#29824a] text-white shadow-none'} last:rounded-r-[4px] group ${activeTab === 'DESIGNADOS' ? 'w-12' : ''}`}>
                         <div className="flex items-center justify-center gap-1.5">
-                          <span className={`font-black text-[9px] uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-700'}`}>
+                          <span className={`font-black text-[9px] uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-white'}`}>
                             AÇÕES
                           </span>
                         </div>
@@ -1078,103 +1470,150 @@ export const GridOps: React.FC<GridOpsProps> = ({
                   </tr>
               </thead>
               <tbody className="text-[11px] font-bold">
-                  {sortedData.map((row) => {
+                  {sortedData.map((row, rowIndex) => {
                       const dynamicStatus = getDynamicStatus(row);
                       return (
                       <tr 
                           key={row.id} 
+                          data-rowindex={rowIndex}
                           onClick={() => setSelectedFlight(row)}
-                          className={`h-12 cursor-pointer transition-all active:scale-[0.99] group shadow-sm rounded-[4px] ${isDarkMode ? '' : 'hover:bg-slate-50'}`}
+                          className={`h-10 cursor-pointer transition-all active:scale-[0.99] group shadow-sm rounded-[4px] ${isDarkMode ? '' : 'hover:bg-slate-50'}`}
                       >
                           {/* AIRLINE */}
-                          <td className={`px-3 text-left first:rounded-l-[4px] border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all`}>
-                              <AirlineLogo airlineCode={row.airlineCode} />
-                          </td>
+                          {renderEditableCell(row, 'airlineCode', row.airlineCode, "justify-start text-left first:rounded-l-[4px]", rowIndex, 0, false)}
 
                           {/* RENDERIZAÇÃO CONDICIONAL DAS CÉLULAS */}
-                          {isStreamlinedView ? (
+                          {activeTab === 'FILA' ? (
                             <>
                                 {/* FLIGHT OUT */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center ${isDarkMode ? 'text-white' : 'text-slate-900'} font-mono tracking-tighter`}>{row.departureFlightNumber || '--'}</td>
+                                {renderEditableCell(row, 'departureFlightNumber', row.departureFlightNumber || '', "text-center font-mono tracking-tighter", rowIndex, 1)}
 
                                 {/* ICAO */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 font-bold text-[10px]`}>
-                                    {row.destination}
-                                </td>
+                                {renderEditableCell(row, 'destination', row.destination, "text-center font-mono text-emerald-500 font-bold text-[10px]", rowIndex, 2, false)}
 
                                 {/* CITY */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>
+                                <td className={`px-1 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>
                                     {ICAO_CITIES[row.destination] || 'EXTERIOR'}
                                 </td>
 
                                 {/* REGISTRATION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 tracking-tighter uppercase`}>{row.registration}</td>
+                                {renderEditableCell(row, 'registration', row.registration, "text-center font-mono text-emerald-500 tracking-tighter uppercase", rowIndex, 3)}
 
                                 {/* POSITION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center`}>
-                                    <span className={`${
-                                        row.positionType === 'CTA' 
-                                        ? 'bg-yellow-400 border-yellow-500 text-slate-900 font-black' 
-                                        : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600')
-                                    } border px-2.5 py-1.5 font-mono text-[12px] rounded shadow-sm`}>
-                                        {row.positionId}
-                                    </span>
-                                </td>
-
-                                {/* CALÇO (ATA) */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-white' : 'text-slate-900'} font-black`}>
-                                    {row.actualArrivalTime || '--'}
-                                </td>
+                                {renderEditableCell(row, 'positionId', row.positionId, "text-center font-mono text-[12px]", rowIndex, 4)}
 
                                 {/* ETD */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{row.etd}</td>
+                                {renderEditableCell(row, 'etd', row.etd, "text-center font-mono text-emerald-400", rowIndex, 6)}
+
+                                {/* CALÇO (ATA) */}
+                                {renderEditableCell(row, 'actualArrivalTime', row.actualArrivalTime || '', "text-center font-mono font-black", rowIndex, 5)}
+
+                                {/* ETA */}
+                                {renderEditableCell(row, 'eta', row.eta || '', "text-center font-mono text-emerald-400 font-black tracking-widest", rowIndex, 99)}
 
                                 {/* OPERATOR (WITH ASSIGN BUTTON) */}
-                                <td className={`px-3 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all truncate`}>
+                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-left align-middle w-[100px] max-w-[100px] overflow-hidden`}>
                                     {row.operator ? (
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-start w-full">
                                             <OperatorCell operatorName={row.operator} />
                                         </div>
                                     ) : (
                                         <button 
                                             onClick={(e) => openAssignModal(row, e)}
-                                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg shadow-lg shadow-indigo-600/20 transition-all active:scale-95 btn-designar"
+                                            className="inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1.5 rounded shadow-lg shadow-indigo-600/20 transition-all active:scale-95 w-full mx-auto"
                                         >
-                                            <UserPlus size={14} />
-                                            <span className="text-[10px] font-black uppercase tracking-widest">Designar</span>
+                                            <UserPlus size={12} />
+                                            <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Designar</span>
                                         </button>
                                     )}
                                 </td>
 
                                 {/* FLEET */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleet || '--'}
-                                </td>
+                                {renderEditableCell(row, 'fleet', row.fleet || '', "text-center font-mono text-[10px]", rowIndex, 7, false)}
 
                                 {/* FLEET TYPE */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleetType || '--'}
+                                {renderEditableCell(row, 'fleetType', row.fleetType || '', "text-center font-mono text-[10px]", rowIndex, 8, false)}
+                            </>
+                          ) : isStreamlinedView ? (
+                            <>
+                                {/* FLIGHT OUT */}
+                                {renderEditableCell(row, 'departureFlightNumber', row.departureFlightNumber || '', "text-center font-mono tracking-tighter", rowIndex, 1)}
+
+                                {/* ICAO */}
+                                {renderEditableCell(row, 'destination', row.destination, "text-center font-mono text-emerald-500 font-bold text-[10px]", rowIndex, 2, false)}
+
+                                {/* CITY (Not directly editable, derived from destination) */}
+                                <td className={`px-1 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>
+                                    {ICAO_CITIES[row.destination] || 'EXTERIOR'}
                                 </td>
 
-                                {/* VAZÃO (Apenas ABASTECENDO) */}
-                                {activeTab === 'ABASTECENDO' && (
-                                    <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'} tracking-tight`}>
-                                        {row.maxFlowRate?.toLocaleString('pt-BR') || '--'}
-                                    </td>
+                                {/* REGISTRATION */}
+                                {renderEditableCell(row, 'registration', row.registration, "text-center font-mono text-emerald-500 tracking-tighter uppercase", rowIndex, 3)}
+
+                                {/* POSITION */}
+                                {renderEditableCell(row, 'positionId', row.positionId, "text-center font-mono text-[12px]", rowIndex, 4)}
+
+                                {/* CALÇO (ATA) */}
+                                {renderEditableCell(row, 'actualArrivalTime', row.actualArrivalTime || '', "text-center font-mono font-black", rowIndex, 5)}
+
+                                {/* ETD */}
+                                {renderEditableCell(row, 'etd', row.etd, "text-center font-mono text-emerald-400", rowIndex, 6)}
+
+                                {/* OPERATOR (WITH ASSIGN BUTTON) */}
+                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-left align-middle ${activeTab === 'DESIGNADOS' ? 'w-[96px] max-w-[96px]' : 'w-[100px] max-w-[100px]'} overflow-hidden`}>
+                                    {row.operator ? (
+                                        <div className="flex items-center justify-start w-full">
+                                            <OperatorCell operatorName={row.operator} />
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={(e) => openAssignModal(row, e)}
+                                            className="inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1.5 rounded shadow-lg shadow-indigo-600/20 transition-all active:scale-95 w-full mx-auto"
+                                        >
+                                            <UserPlus size={12} />
+                                            <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Designar</span>
+                                        </button>
+                                    )}
+                                </td>
+
+                                {/* FLEET */}
+                                {renderEditableCell(row, 'fleet', row.fleet || '', "text-center font-mono text-[10px]", rowIndex, 7, false)}
+
+                                {/* FLEET TYPE */}
+                                {renderEditableCell(row, 'fleetType', row.fleetType || '', "text-center font-mono text-[10px]", rowIndex, 8, false)}
+
+                                {activeTab === 'DESIGNADOS' && (
+                                    <>
+                                        {/* HR.D */}
+                                        {renderEditableCell(
+                                            row, 
+                                            'assignmentTime' as any, 
+                                            row.assignmentTime ? new Date(row.assignmentTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', 'H') : '--', 
+                                            "text-center font-mono text-emerald-400 tracking-tighter", 
+                                            rowIndex, 
+                                            9, 
+                                            false
+                                        )}
+                                        {/* LT */}
+                                        <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-left font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight w-[112px] max-w-[112px] overflow-hidden truncate`}>
+                                            {row.assignedByLt || '--'}
+                                        </td>
+                                    </>
                                 )}
+
+                                {/* VAZÃO (Apenas ABASTECENDO) */}
+                                {activeTab === 'ABASTECENDO' && renderEditableCell(row, 'maxFlowRate', row.maxFlowRate || 0, "text-center font-mono text-emerald-400 tracking-tight", rowIndex, activeTab === 'DESIGNADOS' ? 11 : 9, false)}
                             </>
                           ) : isFinishedView ? (
                             <>
                                 {/* REGISTRATION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 tracking-tighter uppercase`}>{row.registration}</td>
+                                {renderEditableCell(row, 'registration', row.registration, "text-center font-mono text-emerald-500 tracking-tighter uppercase", rowIndex, 1)}
 
                                 {/* FLIGHT OUT */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center ${isDarkMode ? 'text-white' : 'text-slate-900'} font-mono tracking-tighter`}>{row.departureFlightNumber || '--'}</td>
+                                {renderEditableCell(row, 'departureFlightNumber', row.departureFlightNumber || '', "text-center font-mono tracking-tighter", rowIndex, 2)}
 
                                 {/* ICAO */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 font-bold text-[10px]`}>
-                                    {row.destination}
-                                </td>
+                                {renderEditableCell(row, 'destination', row.destination, "text-center font-mono text-emerald-500 font-bold text-[10px]", rowIndex, 3, false)}
 
                                 {/* CITY */}
                                 <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>
@@ -1182,76 +1621,56 @@ export const GridOps: React.FC<GridOpsProps> = ({
                                 </td>
 
                                 {/* POSITION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center`}>
-                                    <span className={`${
-                                        row.positionType === 'CTA' 
-                                        ? 'bg-yellow-400 border-yellow-500 text-slate-900 font-black' 
-                                        : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600')
-                                    } border px-2.5 py-1.5 font-mono text-[12px] rounded shadow-sm`}>
-                                        {row.positionId}
-                                    </span>
-                                </td>
+                                {renderEditableCell(row, 'positionId', row.positionId, "text-center font-mono text-[12px]", rowIndex, 4)}
 
                                 {/* CALÇO (ATA) */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-white' : 'text-slate-900'} font-black`}>
-                                    {row.actualArrivalTime || '--'}
-                                </td>
+                                {renderEditableCell(row, 'actualArrivalTime', row.actualArrivalTime || '', "text-center font-mono font-black", rowIndex, 5)}
 
                                 {/* ETD */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{row.etd}</td>
+                                {renderEditableCell(row, 'etd', row.etd, "text-center font-mono text-emerald-400", rowIndex, 6)}
                                 
                                 {/* OPERATOR (WITH ASSIGN BUTTON & MESSAGE DOT) */}
-                                <td className={`px-3 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all truncate`}>
+                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-left align-middle w-[100px] max-w-[100px] overflow-hidden truncate`}>
                                     {row.operator ? (
-                                        <OperatorCell operatorName={row.operator} />
+                                        <div className="flex items-center justify-start w-full">
+                                            <OperatorCell operatorName={row.operator} />
+                                        </div>
                                     ) : <span className={`${isDarkMode ? 'text-slate-700' : 'text-slate-400'} italic uppercase text-[9px] pl-2`}>--</span>}
                                 </td>
 
                                 {/* FLEET */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleet || '--'}
-                                </td>
+                                {renderEditableCell(row, 'fleet', row.fleet || '', "text-center font-mono text-[10px]", rowIndex, 7, false)}
 
                                 {/* FLEET TYPE */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleetType || '--'}
-                                </td>
+                                {renderEditableCell(row, 'fleetType', row.fleetType || '', "text-center font-mono text-[10px]", rowIndex, 8, false)}
 
-                                {/* TAB (Exclusivo Finalizados) */}
+                                {/* TAB (Exclusivo Finalizados) - Not directly editable as it's calculated */}
                                 <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                                     {calculateTAB(row)}
                                 </td>
 
                                 {/* VAZÃO (Exclusivo Finalizados) */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'} tracking-tight`}>
-                                    {row.maxFlowRate?.toLocaleString('pt-BR') || '--'}
-                                </td>
+                                {renderEditableCell(row, 'maxFlowRate', row.maxFlowRate || 0, "text-center font-mono text-emerald-400 tracking-tight", rowIndex, 10, false)}
                             </>
                           ) : (
                             <>
                                 {/* REGISTRATION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 tracking-tighter uppercase`}>{row.registration}</td>
+                                {renderEditableCell(row, 'registration', row.registration, "text-center font-mono text-emerald-500 tracking-tighter uppercase", rowIndex, 1)}
 
                                 {/* MODEL */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} font-mono text-[10px] font-bold`}>
-                                    {row.model.split('-')[0]}
-                                </td>
+                                {renderEditableCell(row, 'model', row.model, "text-center font-mono text-[10px] font-bold", rowIndex, 2, false)}
 
                                 {/* FLIGHT IN */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center ${isDarkMode ? 'text-white' : 'text-slate-900'} font-mono tracking-tighter`}>{row.flightNumber}</td>
+                                {renderEditableCell(row, 'flightNumber', row.flightNumber, "text-center font-mono tracking-tighter", rowIndex, 3)}
 
-                                {/* ETA (POUSO ESTIMADO) */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {calculateLandingETA(row.eta)}
-                                </td>
+                                {/* ETA (POUSO ESTIMADO) - Derived from eta, but maybe let them edit eta */}
+                                {renderEditableCell(row, 'eta', row.eta, "text-center font-mono", rowIndex, 4)}
 
                                 {/* FLIGHT OUT */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center ${isDarkMode ? 'text-white' : 'text-slate-900'} font-mono tracking-tighter`}>{row.departureFlightNumber || '--'}</td>
+                                {renderEditableCell(row, 'departureFlightNumber', row.departureFlightNumber || '', "text-center font-mono tracking-tighter", rowIndex, 5)}
 
                                 {/* ICAO */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-emerald-500 font-bold text-[10px]`}>
-                                    {row.destination}
-                                </td>
+                                {renderEditableCell(row, 'destination', row.destination, "text-center font-mono text-emerald-500 font-bold text-[10px]", rowIndex, 6, false)}
 
                                 {/* CITY */}
                                 <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-black text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-tight`}>
@@ -1259,62 +1678,44 @@ export const GridOps: React.FC<GridOpsProps> = ({
                                 </td>
 
                                 {/* POSITION */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center`}>
-                                    <span className={`${
-                                        row.positionType === 'CTA' 
-                                        ? 'bg-yellow-400 border-yellow-500 text-slate-900 font-black' 
-                                        : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600')
-                                    } border px-2.5 py-1.5 font-mono text-[12px] rounded shadow-sm`}>
-                                        {row.positionId}
-                                    </span>
-                                </td>
+                                {renderEditableCell(row, 'positionId', row.positionId, "text-center font-mono text-[12px]", rowIndex, 7)}
 
                                 {/* CALÇO (ATA) */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-white' : 'text-slate-900'} font-black`}>
-                                    {row.actualArrivalTime || '--'}
-                                </td>
+                                {renderEditableCell(row, 'actualArrivalTime', row.actualArrivalTime || '', "text-center font-mono font-black", rowIndex, 8)}
 
                                 {/* ETD */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{row.etd}</td>
+                                {renderEditableCell(row, 'etd', row.etd, "text-center font-mono text-emerald-400", rowIndex, 9)}
 
                                 {/* OPERATOR (WITH ASSIGN BUTTON) */}
-                                <td className={`px-3 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all truncate`}>
+                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-left align-middle w-[100px] max-w-[100px] overflow-hidden`}>
                                     {row.operator ? (
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-start w-full">
                                             <OperatorCell operatorName={row.operator} />
                                         </div>
                                     ) : (
                                         <button 
                                             onClick={(e) => openAssignModal(row, e)}
-                                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg shadow-lg shadow-indigo-600/20 transition-all active:scale-95 btn-designar"
+                                            className="inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1.5 rounded shadow-lg shadow-indigo-600/20 transition-all active:scale-95 w-full mx-auto"
                                         >
-                                            <UserPlus size={14} />
-                                            <span className="text-[10px] font-black uppercase tracking-widest">Designar</span>
+                                            <UserPlus size={12} />
+                                            <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">Designar</span>
                                         </button>
                                     )}
                                 </td>
 
                                 {/* FLEET */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleet || '--'}
-                                </td>
+                                {renderEditableCell(row, 'fleet', row.fleet || '', "text-center font-mono text-[10px]", rowIndex, 10, false)}
 
                                 {/* FLEET TYPE */}
-                                <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {row.fleetType || '--'}
-                                </td>
+                                {renderEditableCell(row, 'fleetType', row.fleetType || '', "text-center font-mono text-[10px]", rowIndex, 11, false)}
 
                                 {/* VAZÃO (Apenas GERAL) */}
-                                {activeTab === 'GERAL' && (
-                                    <td className={`px-2 border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all text-center font-mono ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'} tracking-tight`}>
-                                        {row.maxFlowRate?.toLocaleString('pt-BR') || '--'}
-                                    </td>
-                                )}
+                                {activeTab === 'GERAL' && renderEditableCell(row, 'maxFlowRate', row.maxFlowRate || 0, "text-center font-mono text-emerald-400 tracking-tight", rowIndex, 12, false)}
                             </>
                           )}
                           
                           {/* STATUS (PILL DESIGN RESTORED) - MOVED OUTSIDE CONDITIONAL */}
-                          <td className={`px-3 text-center border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all`}>
+                          <td className={`px-1.5 text-center border-y border-l ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all`}>
                               {dynamicStatus ? (
                                   <div className={`flex items-center justify-center w-full h-[28px] px-2 rounded text-[9px] font-black uppercase tracking-[0.1em] border ${dynamicStatus.color}`}>
                                       {dynamicStatus.label}
@@ -1327,7 +1728,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
                               )}
                           </td>
                           
-                          <td className={`px-3 text-center last:rounded-r-[4px] border-y border-l border-r ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all`}>
+                          <td className={`px-1.5 text-center last:rounded-r-[4px] border-y border-l border-r ${isDarkMode ? 'border-slate-700/50 bg-gradient-to-b from-slate-800/50 to-slate-900/80 group-hover:from-slate-700 group-hover:to-slate-800' : 'border-slate-200 bg-white group-hover:bg-slate-50'} transition-all`}>
                               <div className="relative">
                                   <>
                                       <button onClick={(e) => { 
@@ -1367,6 +1768,12 @@ export const GridOps: React.FC<GridOpsProps> = ({
                                                           const cancelBtn = (
                                                               <button onClick={(e) => handleCancelFlight(row, e)} className={cancelBtnClass}>
                                                                   <XCircle size={14} /> Cancelar Voo
+                                                              </button>
+                                                          );
+
+                                                          const delBtn = (
+                                                              <button onClick={(e) => handleDeleteFlight(row, e)} className={cancelBtnClass}>
+                                                                  <XCircle size={14} /> Excluir Voo
                                                               </button>
                                                           );
 
@@ -1416,6 +1823,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
                                                                   <>
                                                                       {pinBtn}
                                                                       {cancelBtn}
+                                                                      {delBtn}
                                                                       {obsBtn}
                                                                   </>
                                                               );
@@ -1515,7 +1923,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
           onClose={() => setSelectedFlight(null)} 
           onUpdate={(updatedFlight) => onUpdateFlights(prev => prev.map(f => f.id === updatedFlight.id ? updatedFlight : f))}
           vehicles={vehicles}
-          operators={operators}
+          operators={getEligibleOperators(selectedFlight)}
           onOpenAssignSupport={(flight) => setAssignSupportModalFlight(flight)}
         />
       )}
@@ -1598,6 +2006,17 @@ export const GridOps: React.FC<GridOpsProps> = ({
           registration={cancelModalFlight.registration}
           onConfirm={confirmCancelFlight}
           onClose={() => setCancelModalFlight(null)}
+        />
+      )}
+
+      {/* DELETE FLIGHT CONFIRMATION MODAL */}
+      {deleteModalFlight && (
+        <ConfirmActionModal
+          type="delete"
+          flightNumber={deleteModalFlight.flightNumber}
+          registration={deleteModalFlight.registration}
+          onConfirm={confirmDeleteFlight}
+          onClose={() => setDeleteModalFlight(null)}
         />
       )}
 

@@ -8,13 +8,16 @@ interface DashboardHeaderProps {
   onToggleFullscreen: () => void;
   globalSearchTerm: string;
   setGlobalSearchTerm: (term: string) => void;
+  ltName: string;
+  setLtName: (name: string) => void;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, toggleDarkMode, isFullscreen, onToggleFullscreen, globalSearchTerm, setGlobalSearchTerm }) => {
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, toggleDarkMode, isFullscreen, onToggleFullscreen, globalSearchTerm, setGlobalSearchTerm, ltName, setLtName }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [editingField, setEditingField] = useState<'density' | 'temperature' | null>(null);
+  const [editingField, setEditingField] = useState<'density' | 'temperature' | 'ltName' | null>(null);
   const [densityN, setDensityN] = useState(0.803);
   const [temperature, setTemperature] = useState(24.5);
+  const [tempLtName, setTempLtName] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -33,15 +36,12 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
 
   return (
     <>
-      <header className={`h-20 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#2C864C] border-white/10'} border-b flex items-center justify-between px-8 z-[100] relative transition-colors duration-500`}>
+      <header className={`h-20 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#004D24] border-transparent'} border-b flex items-center justify-between px-8 z-[100] relative transition-colors duration-500`}>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2 rounded-lg shadow-[0_0_20px_rgba(255,255,255,0.2)]">
               <Plane className="text-white" size={20} />
             </div>
-            <span className="font-black text-sm tracking-tighter text-white uppercase">
-              MALHA
-            </span>
           </div>
 
           <div className="w-px h-10 bg-white/20"></div>
@@ -51,7 +51,29 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
                   <User size={18} className="text-white" />
               </div>
               <div className="text-left">
-                  <span className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors uppercase">OPERADOR_ADMIN</span>
+                  {editingField === 'ltName' ? (
+                      <input 
+                          type="text" 
+                          value={tempLtName}
+                          onChange={(e) => setTempLtName(e.target.value)}
+                          onBlur={() => { setLtName(tempLtName); setEditingField(null); }}
+                          onKeyDown={(e) => { 
+                              if (e.key === 'Enter') { 
+                                  setLtName(tempLtName); 
+                                  setEditingField(null); 
+                              } 
+                          }}
+                          autoFocus
+                          className="bg-black/20 text-white font-bold text-sm rounded outline-none border border-emerald-500/50 px-1 uppercase w-36"
+                      />
+                  ) : (
+                      <span 
+                          className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors uppercase block select-none"
+                          onClick={() => { setTempLtName(ltName); setEditingField('ltName'); }}
+                      >
+                          {ltName}
+                      </span>
+                  )}
                   <span className="text-[10px] text-emerald-200 font-black tracking-widest uppercase block">Líder de Solo</span>
               </div>
           </div>
@@ -59,7 +81,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
           <div className="w-px h-10 bg-white/20"></div>
 
           <div>
-              <h1 className="text-4xl font-bold tracking-tighter font-mono text-white">{formatTime(currentTime)}</h1>
+              <h1 className={`text-4xl font-bold tracking-tighter font-mono ${isDarkMode ? 'text-white' : 'text-[#4ade80]'}`}>{formatTime(currentTime)}</h1>
               <p className="text-xs text-emerald-100 font-bold tracking-widest">{formatDate(currentTime)}</p>
           </div>
 
@@ -95,7 +117,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
                           />
                       ) : (
                           <span 
-                              className="font-mono font-bold text-white text-lg cursor-pointer hover:text-emerald-200 transition-colors w-16 inline-block"
+                              className={`font-mono font-bold ${isDarkMode ? 'text-white' : 'text-[#4ade80]'} text-lg cursor-pointer hover:text-emerald-200 transition-colors w-16 inline-block`}
                               onClick={() => setEditingField('density')}
                           >
                               {Number(densityN).toFixed(3)}
@@ -130,7 +152,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
                           />
                       ) : (
                           <span 
-                              className="font-mono font-bold text-white text-lg cursor-pointer hover:text-emerald-200 transition-colors w-16 inline-block"
+                              className={`font-mono font-bold ${isDarkMode ? 'text-white' : 'text-[#4ade80]'} text-lg cursor-pointer hover:text-emerald-200 transition-colors w-16 inline-block`}
                               onClick={() => setEditingField('temperature')}
                           >
                               {Number(temperature).toFixed(1)}°C
@@ -143,18 +165,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
 
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => {
-              // Simulate sync
-              const btn = document.activeElement as HTMLElement;
-              if (btn) btn.blur();
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-bold text-[10px] uppercase tracking-wider transition-colors shadow-sm"
-          >
-            <RefreshCw size={12} />
-            Sinc
-          </button>
-
-          <button 
             onClick={onToggleFullscreen} 
             className="p-2.5 text-emerald-100 hover:text-white hover:bg-white/10 transition-all rounded-md"
           >
@@ -166,7 +176,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
           >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
-          <div className="w-px h-8 bg-white/20 mx-2"></div>
           <div id="header-options-portal-target"></div>
         </div>
       </header>

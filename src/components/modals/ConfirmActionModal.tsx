@@ -3,8 +3,8 @@ import { X, AlertTriangle, Play, UserCheck, CheckCircle } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface ConfirmActionModalProps {
-    type: 'cancel' | 'start' | 'remove' | 'finish';
-    flightNumber: string;
+    type: 'cancel' | 'start' | 'remove' | 'finish' | 'delete' | 'clearMesh';
+    flightNumber?: string;
     registration?: string;
     onConfirm: () => void;
     onClose: () => void;
@@ -76,12 +76,36 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
                 confirmBg: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
             };
             break;
+        case 'delete':
+            config = {
+                title: 'Excluir Voo',
+                icon: <AlertTriangle size={32} className="text-red-500" />,
+                iconBg: 'bg-red-500/10 border-red-500/20',
+                description: (
+                    <>Você optou por <span className="text-red-400 font-bold">EXCLUIR</span> o voo <span className={`${isDarkMode ? 'text-white' : 'text-slate-900'} font-mono font-bold`}>{flightNumber}</span> {registration}. Esta ação não pode ser desfeita.</>
+                ),
+                confirmText: 'Sim, Excluir',
+                confirmBg: 'bg-red-600 hover:bg-red-500 shadow-red-600/20'
+            };
+            break;
+        case 'clearMesh':
+            config = {
+                title: 'Limpar Malha Base',
+                icon: <AlertTriangle size={32} className="text-red-500" />,
+                iconBg: 'bg-red-500/10 border-red-500/20',
+                description: (
+                    <>Tem certeza de que deseja limpar toda a Malha Base? <span className="text-red-400 font-bold">Esta ação não pode ser desfeita.</span></>
+                ),
+                confirmText: 'Sim, Limpar',
+                confirmBg: 'bg-red-600 hover:bg-red-500 shadow-red-600/20'
+            };
+            break;
     }
 
     return (
         <div className="absolute inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center animate-in fade-in zoom-in-95 duration-200">
             <div className={`${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-slate-200'} border-[0.5px] rounded-[8px] w-[450px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden`}>
-                <div className={`${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#2C864C] border-[#2C864C]'} p-4 border-b flex justify-between items-center`}>
+                <div className={`${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#004D24] border-[#004D24]'} p-4 border-b flex justify-between items-center`}>
                     <h3 className="text-xs font-bold text-white uppercase tracking-widest">{config.title}</h3>
                     <button onClick={onClose} className={`${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-emerald-100 hover:text-white'} transition-colors`}>
                         <X size={18} />
