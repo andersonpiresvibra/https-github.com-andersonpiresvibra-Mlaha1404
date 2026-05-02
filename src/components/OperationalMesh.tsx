@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Save, Plane, Send, Search, Edit2, Trash2, Play, ClipboardList, Plus, Ban, AlertCircle, MoreVertical, Settings, ChevronDown, RefreshCw, Upload } from 'lucide-react';
 import { MeshFlight, INITIAL_MESH_FLIGHTS } from '../data/operationalMesh';
 import { FlightData, FlightStatus } from '../types';
+import * as XLSX from 'xlsx';
 import { ConfirmActionModal } from './modals/ConfirmActionModal';
 import { AlertModal } from './modals/AlertModal';
 
@@ -500,6 +501,32 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                     onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
                         const file = e.target.files[0];
+                        
+                        const handleNewFlights = (newFlights: MeshFlight[]) => {
+                          if (newFlights.length > 0) {
+                            setMeshFlights(prev => {
+                              const nonDuplicates = newFlights.filter(nf => {
+                                return !prev.some(pf => 
+                                  pf.departureFlightNumber === nf.departureFlightNumber && 
+                                  pf.etd === nf.etd
+                                );
+                              });
+                              const ignoredCount = newFlights.length - nonDuplicates.length;
+                              const messageContent = (
+                                <>
+                                  Arquivo "{file.name}" foi carregado com sucesso!
+                                  <br/><br/>
+                                  "{ignoredCount}" ignorados (por duplicidade).
+                                  <br/>
+                                  {nonDuplicates.length} importados.
+                                </>
+                              );
+                              setTimeout(() => setAlertState({isOpen: true, title: 'Importação Concluída', message: messageContent}), 100);
+                              return [...nonDuplicates, ...prev];
+                            });
+                          }
+                        };
+
                         if (file.name.endsWith('.csv')) {
                           const reader = new FileReader();
                           reader.onload = (evt) => {
@@ -527,57 +554,44 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                                 });
                               }
                             });
-                            if (newFlights.length > 0) {
-                              setMeshFlights(prev => {
-                                const nonDuplicates = newFlights.filter(nf => {
-                                  // Duplicate if there's any flight in prev that matches flightNumber and ETD
-                                  return !prev.some(pf => 
-                                    pf.departureFlightNumber === nf.departureFlightNumber && 
-                                    pf.etd === nf.etd
-                                  );
-                                });
-                                const ignoredCount = newFlights.length - nonDuplicates.length;
-                                const messageContent = (
-                                  <>
-                                    Arquivo "{file.name}" foi carregado com sucesso!
-                                    <br/><br/>
-                                    "{ignoredCount}" ignorados (por duplicidade).
-                                    <br/>
-                                    {nonDuplicates.length} importados.
-                                  </>
-                                );
-                                setTimeout(() => setAlertState({isOpen: true, title: 'Importação Concluída', message: messageContent}), 100);
-                                return [...nonDuplicates, ...prev];
-                              });
-                            }
+                            handleNewFlights(newFlights);
                           };
                           reader.readAsText(file);
                         } else {
-                          const fakeImports = INITIAL_MESH_FLIGHTS.map(f => ({
-                            ...f, 
-                            id: `imp-${Date.now()}-${Math.random()}`, 
-                            isNew: true,
-                            etd: formatImportTime(f.etd),
-                            eta: formatImportTime(f.eta),
-                            actualArrivalTime: formatImportTime(f.actualArrivalTime || '')
-                          }));
-                          setMeshFlights(prev => {
-                            const nonDuplicates = fakeImports.filter(nf => !prev.some(pf => pf.departureFlightNumber === nf.departureFlightNumber && pf.etd === nf.etd));
-                            const ignoredCount = fakeImports.length - nonDuplicates.length;
-                            const messageContent = (
-                              <>
-                                Arquivo "{file.name}" foi carregado com sucesso! (simulação)
-                                <br/><br/>
-                                "{ignoredCount}" ignorados (por duplicidade).
-                                <br/>
-                                {nonDuplicates.length} importados.
-                              </>
-                            );
-                            setTimeout(() => {
-                              setAlertState({isOpen: true, title: 'Massa Simulada', message: messageContent});
-                            }, 100);
-                            return [...nonDuplicates, ...prev];
-                          });
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const arrayBuffer = evt.target?.result as ArrayBuffer;
+                            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                            const sheetName = workbook.SheetNames[0];
+                            const sheet = workbook.Sheets[sheetName];
+                            const jsonData = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+                            
+                            const newFlights: MeshFlight[] = [];
+                            jsonData.forEach((row, index) => {
+                              if (!row || row.length === 0) return;
+                              if (index === 0 && row[0] && (String(row[0]).toLowerCase().includes('cia') || String(row[0]).toLowerCase().includes('airline'))) return;
+                              
+                              const cols = row.map(cell => cell != null ? String(cell) : '');
+                              if (cols.length >= 4) {
+                                newFlights.push({
+                                  id: `imp-${Date.now()}-${index}`,
+                                  airline: cols[0] || 'G3',
+                                  airlineCode: cols[0] || 'GOL',
+                                  departureFlightNumber: cols[1] || '',
+                                  destination: cols[2] || '',
+                                  etd: formatImportTime(cols[3] || ''),
+                                  registration: cols[4] || '',
+                                  model: cols[5] || '',
+                                  eta: formatImportTime(cols[6] || ''),
+                                  positionId: cols[7] || '',
+                                  actualArrivalTime: formatImportTime(cols[8] || ''),
+                                  isNew: true
+                                });
+                              }
+                            });
+                            handleNewFlights(newFlights);
+                          };
+                          reader.readAsArrayBuffer(file);
                         }
                       }
                       // Reset input value to allow importing the same file again
