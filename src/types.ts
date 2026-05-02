@@ -72,6 +72,8 @@ export interface OperatorProfile {
   fleetCapability?: 'CTA' | 'SRV' | 'BOTH';
   lastFlightEnd?: Date;
   assignedVehicle?: string; // Propriedade adicionada para o HUD de equipe
+  pausedAt?: string; // Hora em que entrou em pausa (HH:mm)
+  resumedAt?: string; // Hora em que retornou da pausa (HH:mm)
   shift: {
     cycle: ShiftCycle;
     start: string;

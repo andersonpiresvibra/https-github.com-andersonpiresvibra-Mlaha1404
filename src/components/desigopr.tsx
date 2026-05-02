@@ -72,8 +72,8 @@ export const DesigOpr: React.FC<DesigOprProps> = ({ isOpen, onClose, flight, veh
     const isOperatorDisabled = (op: OperatorProfile) => {
         if (!op.assignedVehicle) return true;
         
-        // Prevent assigning if operator is already on an active flight
-        if (['OCUPADO', 'DESIGNADO', 'ABASTECENDO'].includes(op.status)) return true;
+        // Prevent assigning if operator is already on an active flight or paused
+        if (['OCUPADO', 'DESIGNADO', 'ABASTECENDO', 'INTERVALO'].includes(op.status)) return true;
 
         if (!flight) return false;
         // Se a posição for CTA, inabilitar SRVs

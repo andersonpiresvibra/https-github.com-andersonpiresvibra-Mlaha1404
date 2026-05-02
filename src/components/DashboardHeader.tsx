@@ -63,15 +63,16 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ isDarkMode, to
                                   setEditingField(null); 
                               } 
                           }}
+                          placeholder="INSIRA SEU NOME"
                           autoFocus
-                          className="bg-black/20 text-white font-bold text-sm rounded outline-none border border-emerald-500/50 px-1 uppercase w-36"
+                          className="bg-black/20 text-white font-bold text-sm rounded outline-none border border-emerald-500/50 px-1 uppercase w-36 placeholder:text-white/50"
                       />
                   ) : (
                       <span 
-                          className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors uppercase block select-none"
+                          className={`text-sm font-bold transition-colors uppercase block select-none ${ltName ? 'text-white group-hover:text-emerald-200' : 'text-white/50 group-hover:text-white/80'}`}
                           onClick={() => { setTempLtName(ltName); setEditingField('ltName'); }}
                       >
-                          {ltName}
+                          {ltName || 'INSIRA SEU NOME'}
                       </span>
                   )}
                   <span className="text-[10px] text-emerald-200 font-black tracking-widest uppercase block">Líder de Solo</span>

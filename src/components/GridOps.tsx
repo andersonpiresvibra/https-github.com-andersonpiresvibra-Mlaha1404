@@ -585,7 +585,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
   }, [shiftedFlights, globalSearchTerm]);
 
   const stats = useMemo(() => ({
-    total: searchFilteredFlights.filter(f => f.status !== FlightStatus.FINALIZADO && f.status !== FlightStatus.CANCELADO).length,
+    total: searchFilteredFlights.length,
     chegada: searchFilteredFlights.filter(f => {
         const minutesToEta = getMinutesDiff(f.eta);
         return f.status === FlightStatus.CHEGADA && !(f.isOnGround && f.positionId) && minutesToEta <= 120;
@@ -597,7 +597,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
   }), [searchFilteredFlights]);
 
   const tabs: { id: Tab; label: string; icon: React.ElementType; count?: number }[] = [
-    { id: 'GERAL', label: 'MALHA GERAL', icon: LayoutGrid, count: stats.total },
+    { id: 'GERAL', label: 'TODOS OS VOOS', icon: LayoutGrid, count: stats.total },
     { id: 'CHEGADA', label: 'CHEGADA', icon: PlaneLanding, count: stats.chegada },
     { id: 'FILA', label: 'FILA', icon: ListOrdered, count: stats.fila },
     { id: 'DESIGNADOS', label: 'DESIGNADOS', icon: UserCheck, count: stats.designados },
@@ -624,12 +624,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
       case 'ABASTECENDO': base = searchFilteredFlights.filter(f => f.status === FlightStatus.ABASTECENDO); break;
       case 'FINALIZADO': base = searchFilteredFlights.filter(f => f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO); break;
       case 'GERAL': 
-        base = searchFilteredFlights.filter(f => {
-            if (f.status === FlightStatus.FINALIZADO || f.status === FlightStatus.CANCELADO) {
-                return false;
-            }
-            return true;
-        });
+        base = searchFilteredFlights;
         break;
       default: base = searchFilteredFlights;
     }
@@ -708,6 +703,14 @@ export const GridOps: React.FC<GridOpsProps> = ({
         return data.sort((a, b) => {
             if (a.isPinned && !b.isPinned) return -1;
             if (!a.isPinned && b.isPinned) return 1;
+            
+            if (activeTab === 'GERAL') {
+                const aInactive = a.status === FlightStatus.FINALIZADO || a.status === FlightStatus.CANCELADO;
+                const bInactive = b.status === FlightStatus.FINALIZADO || b.status === FlightStatus.CANCELADO;
+                if (aInactive && !bInactive) return 1;
+                if (!aInactive && bInactive) return -1;
+            }
+            
             return 0;
         });
     }
@@ -715,6 +718,13 @@ export const GridOps: React.FC<GridOpsProps> = ({
     return data.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
+      
+      if (activeTab === 'GERAL') {
+          const aInactive = a.status === FlightStatus.FINALIZADO || a.status === FlightStatus.CANCELADO;
+          const bInactive = b.status === FlightStatus.FINALIZADO || b.status === FlightStatus.CANCELADO;
+          if (aInactive && !bInactive) return 1;
+          if (!aInactive && bInactive) return -1;
+      }
       
       const aValue = (a[sortConfig.key!] ?? '').toString();
       const bValue = (b[sortConfig.key!] ?? '').toString();
@@ -1270,13 +1280,13 @@ export const GridOps: React.FC<GridOpsProps> = ({
                         onClick={() => {
                             // Limpar toda a malha operacional
                             onUpdateFlights([]);
-                            addToast('MALHA GERAL', 'Toda a malha operacional foi removida.', 'warning');
+                            addToast('MALHA OPER.', 'Toda a malha operacional foi removida.', 'warning');
                             setShowOptionsDropdown(false);
                         }}
                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-red-600 hover:bg-red-50 hover:text-red-700'}`}
                     >
                         <Trash2 size={14} />
-                        Limpar Malha Geral
+                        Limpar Malha Oper.
                     </button>
                 </div>
             </div>
@@ -1289,7 +1299,7 @@ export const GridOps: React.FC<GridOpsProps> = ({
         <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
                 <div>
-                  <h2 className="text-sm font-black text-white tracking-tighter uppercase leading-none">Malha Geral</h2>
+                  <h2 className="text-sm font-black text-white tracking-tighter uppercase leading-none">MALHA OPER.</h2>
                 </div>
             </div>
 
@@ -1304,8 +1314,10 @@ export const GridOps: React.FC<GridOpsProps> = ({
                     </button>
                 ))}
             </div>
+        </div>
 
-            <div className="relative w-[180px] h-9 ml-6">
+        <div className="flex items-center gap-4">
+            <div className="relative w-[280px] h-9">
                 <div className={`absolute inset-0 bg-white shadow-sm border ${isDarkMode ? 'border-slate-700' : 'border-white/20'} rounded flex items-center transition-all`}>
                     <Search size={14} className="shrink-0 text-slate-800 ml-3" />
                     <input 
@@ -1325,9 +1337,8 @@ export const GridOps: React.FC<GridOpsProps> = ({
                     )}
                 </div>
             </div>
+            {optionsDropdownContent}
         </div>
-
-        {optionsDropdownContent}
       </div>
   );
 
@@ -1472,12 +1483,13 @@ export const GridOps: React.FC<GridOpsProps> = ({
               <tbody className="text-[11px] font-bold">
                   {sortedData.map((row, rowIndex) => {
                       const dynamicStatus = getDynamicStatus(row);
+                      const isInactiveRow = row.status === FlightStatus.FINALIZADO || row.status === FlightStatus.CANCELADO;
                       return (
                       <tr 
                           key={row.id} 
                           data-rowindex={rowIndex}
                           onClick={() => setSelectedFlight(row)}
-                          className={`h-10 cursor-pointer transition-all active:scale-[0.99] group shadow-sm rounded-[4px] ${isDarkMode ? '' : 'hover:bg-slate-50'}`}
+                          className={`h-10 cursor-pointer transition-all active:scale-[0.99] group shadow-sm rounded-[4px] ${isDarkMode ? '' : 'hover:bg-slate-50'} ${isInactiveRow ? 'opacity-40 grayscale' : ''}`}
                       >
                           {/* AIRLINE */}
                           {renderEditableCell(row, 'airlineCode', row.airlineCode, "justify-start text-left first:rounded-l-[4px]", rowIndex, 0, false)}

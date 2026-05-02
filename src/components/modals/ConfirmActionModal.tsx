@@ -3,9 +3,10 @@ import { X, AlertTriangle, Play, UserCheck, CheckCircle } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface ConfirmActionModalProps {
-    type: 'cancel' | 'start' | 'remove' | 'finish' | 'delete' | 'clearMesh';
+    type: 'cancel' | 'start' | 'remove' | 'finish' | 'delete' | 'clearMesh' | 'syncPartial';
     flightNumber?: string;
     registration?: string;
+    message?: string;
     onConfirm: () => void;
     onClose: () => void;
 }
@@ -14,6 +15,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
     type,
     flightNumber,
     registration,
+    message,
     onConfirm,
     onClose
 }) => {
@@ -98,6 +100,18 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
                 ),
                 confirmText: 'Sim, Limpar',
                 confirmBg: 'bg-red-600 hover:bg-red-500 shadow-red-600/20'
+            };
+            break;
+        case 'syncPartial':
+            config = {
+                title: 'Sincronização Parcial',
+                icon: <AlertTriangle size={32} className="text-amber-500" />,
+                iconBg: 'bg-amber-500/10 border-amber-500/20',
+                description: (
+                    <>{message}</>
+                ),
+                confirmText: 'Sim, Enviar Pendentes',
+                confirmBg: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
             };
             break;
     }

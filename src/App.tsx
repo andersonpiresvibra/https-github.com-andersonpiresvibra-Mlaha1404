@@ -40,7 +40,7 @@ const App: React.FC = () => {
   });
 
   const [globalVehicles, setGlobalVehicles] = useState<Vehicle[]>(MOCK_VEHICLES);
-  const [globalOperators, setGlobalOperators] = useState<OperatorProfile[]>(MOCK_TEAM_PROFILES);
+  const [globalOperators, setGlobalOperators] = useState<OperatorProfile[]>([]);
   const [meshFlights, setMeshFlights] = useState<MeshFlight[]>(() => {
     const saved = localStorage.getItem('meshFlights');
     if (saved) {
@@ -74,7 +74,9 @@ const App: React.FC = () => {
   const [gridOpsInitialTab, setGridOpsInitialTab] = useState<'GERAL' | 'CHEGADA' | 'FILA' | 'DESIGNADOS' | 'ABASTECENDO' | 'FINALIZADO'>('GERAL');
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
-  const [ltName, setLtName] = useState('OPERADOR_ADMIN');
+  const [ltName, setLtName] = useState('');
+
+  const isNameInvalid = !ltName || ltName.trim() === '';
 
   const toggleFullscreen = () => {
     const doc = document as any;
@@ -193,6 +195,22 @@ const App: React.FC = () => {
         setLtName={setLtName}
       />
       
+      {isNameInvalid && (
+        <div className="fixed inset-x-0 bottom-0 top-20 z-[90] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className={`border ${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-[#004D24]/30'} rounded-xl p-8 max-w-md w-full shadow-2xl text-center relative overflow-hidden`}>
+                <div className={`absolute top-0 inset-x-0 h-1 ${isDarkMode ? 'bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600' : 'bg-[#004D24]'} animate-pulse`}></div>
+                <h2 className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'} mb-2 tracking-tight uppercase`}>Acesso Restrito</h2>
+                <p className={`${isDarkMode ? 'text-slate-400' : 'text-slate-600'} mb-8 font-medium leading-relaxed`}>Por favor, insira o seu nome no cabeçalho superior direito para acessar e operar o sistema.</p>
+                <div className={`flex flex-col items-center justify-center gap-2 ${isDarkMode ? 'text-emerald-400' : 'text-[#004D24]'} font-bold uppercase tracking-widest text-xs`}>
+                     <div className="animate-bounce">
+                         <Table size={24} className="mb-2" />
+                     </div>
+                     Aguardando Identificação...
+                </div>
+            </div>
+        </div>
+      )}
+
       <div id="subheader-portal-target" className="w-full shrink-0 z-[60] relative"></div>
 
       <div className={`flex flex-1 w-full ${isDarkMode ? 'bg-slate-950 text-slate-200' : 'bg-slate-50 text-slate-800'} transition-colors duration-500 font-sans overflow-hidden relative`}>

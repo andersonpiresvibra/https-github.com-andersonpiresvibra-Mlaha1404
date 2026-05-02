@@ -4,6 +4,7 @@ import { X, Save, Plane, Send, Search, Edit2, Trash2, Play, ClipboardList, Plus,
 import { MeshFlight, INITIAL_MESH_FLIGHTS } from '../data/operationalMesh';
 import { FlightData, FlightStatus } from '../types';
 import { ConfirmActionModal } from './modals/ConfirmActionModal';
+import { AlertModal } from './modals/AlertModal';
 
 interface OperationalMeshProps {
   onClose: () => void;
@@ -93,6 +94,9 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   const [showClearMeshModal, setShowClearMeshModal] = useState(false);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
+
+  const [alertState, setAlertState] = useState<{isOpen: boolean; title: string; message: React.ReactNode}>({isOpen: false, title: '', message: ''});
+  const [syncConfirmState, setSyncConfirmState] = useState<{isOpen: boolean; message: string; unsynced: MeshFlight[]}>({isOpen: false, message: '', unsynced: []});
 
   const handleFieldChange = (id: string, field: MeshField, value: string) => {
     if (field === 'actions') return;
@@ -191,7 +195,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     const unsyncedFlights = activeFlights.filter(f => !isFlightSynced(f));
 
     if (unsyncedFlights.length === 0) {
-        alert('A malha geral já está sincronizada. Todos os voos ativos da malha base já estão presentes na malha geral.');
+        setAlertState({isOpen: true, title: 'Malha Sincronizada', message: 'A malha geral já está sincronizada. Todos os voos ativos da malha base já estão presentes na malha geral.'});
         return;
     }
 
@@ -201,7 +205,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     );
 
     if (incompleteFlight) {
-        alert('Por favor, preencha os dados básicos (Cia, Voo, Destino e ETD) dos voos pendentes antes de sincronizar.');
+        setAlertState({isOpen: true, title: 'Dados Incompletos', message: 'Por favor, preencha os dados básicos (Cia, Voo, Destino e ETD) dos voos pendentes antes de sincronizar.'});
         return;
     }
 
@@ -216,16 +220,20 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     );
 
     if (duplicatedFlight) {
-        alert('Há voos duplicados na malha base marcados em vermelho. Remova a duplicação antes de enviar para a malha geral.');
+        setAlertState({isOpen: true, title: 'Voos Duplicados', message: 'Há voos duplicados na malha base marcados em vermelho. Remova a duplicação antes de enviar para a malha geral.'});
         return;
     }
 
     if (unsyncedFlights.length < activeFlights.length) {
-        const confirm = window.confirm(`Alguns voos já estão sincronizados na Malha Geral. Deseja enviar apenas os ${unsyncedFlights.length} voos pendentes?`);
-        if (!confirm) return;
+        setSyncConfirmState({isOpen: true, message: `Alguns voos já estão sincronizados na Malha Geral. Deseja enviar apenas os ${unsyncedFlights.length} voos pendentes?`, unsynced: unsyncedFlights});
+        return;
     }
 
-    const newFlights: FlightData[] = unsyncedFlights.map(mesh => ({
+    executeSync(unsyncedFlights);
+  };
+
+  const executeSync = (flightsToSync: MeshFlight[]) => {
+    const newFlights: FlightData[] = flightsToSync.map(mesh => ({
       id: `mesh-${Date.now()}-${mesh.id}`,
       airline: mesh.airline,
       airlineCode: mesh.airlineCode || mesh.airline.substring(0, 3) || 'G3',
@@ -252,8 +260,10 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     }));
 
     onActivateMesh(newFlights);
-    alert(`Sincronização concluída! ${newFlights.length} voos enviados para a malha geral.`);
-    onClose();
+    setAlertState({isOpen: true, title: 'Sincronização Concluída', message: `Sincronização concluída! ${newFlights.length} voos enviados para a malha geral.`});
+    setTimeout(() => {
+        onClose();
+    }, 2000);
   };
 
   const filteredFlights = meshFlights.filter(f => {
@@ -406,6 +416,208 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     onClose();
   };
 
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalTarget(document.getElementById('subheader-portal-target'));
+  }, []);
+
+  const headerContent = (
+    <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#3CA317] border-transparent text-white'} z-[60] w-full shadow-sm`}>
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-sm font-black text-white tracking-tighter uppercase leading-none">Malha Base</h2>
+            <div className="flex items-center gap-4 mt-1">
+              <p className="text-[10px] font-bold text-emerald-100/70 uppercase tracking-wider">
+              {filteredFlights.length} de {meshFlights.length} registros • Modo Planilha
+            </p>
+              <div className="h-3 w-px bg-white/20"></div>
+              <div className="flex items-center gap-2 bg-black/20 p-1 rounded border border-white/10 w-[270px] h-10">
+                {(['TODOS', 'MANHA', 'TARDE', 'NOITE'] as MeshShift[]).map(shift => (
+                  <button
+                    key={shift}
+                    onClick={() => setActiveShift(shift)}
+                    className={`px-3 py-1.5 rounded text-[9px] font-black uppercase tracking-widest transition-all h-full ${activeShift === shift ? 'bg-emerald-500 text-slate-950 flex-1' : 'text-emerald-100/50 hover:text-white flex-1'}`}
+                  >
+                    {shift}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="relative w-64 h-9">
+          <div className="absolute inset-0 bg-white/10 border border-white/20 rounded-md flex items-center transition-all focus-within:bg-white/20 focus-within:border-white/40">
+            <Search size={14} className="shrink-0 text-emerald-100 ml-3" />
+            <input 
+              type="text" 
+              placeholder="Pesquise..." 
+              className="bg-transparent border-none outline-none text-[10px] text-white placeholder:text-emerald-100/50 font-mono uppercase w-full px-3 transition-all h-full"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="relative" ref={optionsMenuRef}>
+          <button 
+            onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase tracking-wider text-[11px] ${showOptionsDropdown ? 'bg-[#e5c600] shadow-inner' : 'bg-[#FEDC00] hover:bg-[#e5c600] shadow-sm'} text-[#4e4141] active:scale-95 border border-[#FEDC00]`}
+          >
+            <Settings size={14} />
+            <span>Opções</span>
+            <ChevronDown size={14} className={`transition-transform duration-200 ${showOptionsDropdown ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showOptionsDropdown && (
+            <div className={`absolute right-0 top-full mt-2 w-56 ${isDarkMode ? 'bg-slate-900 border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-200 shadow-xl'} border rounded-xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2`}>
+              <div className="p-1.5 space-y-0.5">
+                <div className="px-3 py-2 border-b border-white/5 mb-1">
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Ações da Malha Base</span>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    handleAddFlight();
+                    setShowOptionsDropdown(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                >
+                  <Plus size={14} />
+                  Adicionar Voo
+                </button>
+
+                <label className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${isDarkMode ? 'text-slate-300 hover:bg-blue-500/10 hover:text-blue-400' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-600'}`}>
+                  <Upload size={14} />
+                  Import. voos
+                  <input 
+                    type="file" 
+                    accept=".csv, .xlsx, .xls"
+                    className="hidden" 
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const file = e.target.files[0];
+                        if (file.name.endsWith('.csv')) {
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const text = evt.target?.result as string;
+                            const lines = text.split(/\r?\n/);
+                            const newFlights: MeshFlight[] = [];
+                            lines.forEach((line, index) => {
+                              if (!line.trim()) return;
+                              const cols = line.split(/[;,]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
+                              if (index === 0 && (cols[0].toLowerCase().includes('cia') || cols[0].toLowerCase().includes('airline'))) return;
+                              if (cols.length >= 4) {
+                                newFlights.push({
+                                  id: `imp-${Date.now()}-${index}`,
+                                  airline: cols[0] || 'G3',
+                                  airlineCode: cols[0] || 'GOL',
+                                  departureFlightNumber: cols[1] || '',
+                                  destination: cols[2] || '',
+                                  etd: formatImportTime(cols[3] || ''),
+                                  registration: cols[4] || '',
+                                  model: cols[5] || '',
+                                  eta: formatImportTime(cols[6] || ''),
+                                  positionId: cols[7] || '',
+                                  actualArrivalTime: formatImportTime(cols[8] || ''),
+                                  isNew: true
+                                });
+                              }
+                            });
+                            if (newFlights.length > 0) {
+                              setMeshFlights(prev => {
+                                const nonDuplicates = newFlights.filter(nf => {
+                                  // Duplicate if there's any flight in prev that matches flightNumber and ETD
+                                  return !prev.some(pf => 
+                                    pf.departureFlightNumber === nf.departureFlightNumber && 
+                                    pf.etd === nf.etd
+                                  );
+                                });
+                                const ignoredCount = newFlights.length - nonDuplicates.length;
+                                const messageContent = (
+                                  <>
+                                    Arquivo "{file.name}" foi carregado com sucesso!
+                                    <br/><br/>
+                                    "{ignoredCount}" ignorados (por duplicidade).
+                                    <br/>
+                                    {nonDuplicates.length} importados.
+                                  </>
+                                );
+                                setTimeout(() => setAlertState({isOpen: true, title: 'Importação Concluída', message: messageContent}), 100);
+                                return [...nonDuplicates, ...prev];
+                              });
+                            }
+                          };
+                          reader.readAsText(file);
+                        } else {
+                          const fakeImports = INITIAL_MESH_FLIGHTS.map(f => ({
+                            ...f, 
+                            id: `imp-${Date.now()}-${Math.random()}`, 
+                            isNew: true,
+                            etd: formatImportTime(f.etd),
+                            eta: formatImportTime(f.eta),
+                            actualArrivalTime: formatImportTime(f.actualArrivalTime || '')
+                          }));
+                          setMeshFlights(prev => {
+                            const nonDuplicates = fakeImports.filter(nf => !prev.some(pf => pf.departureFlightNumber === nf.departureFlightNumber && pf.etd === nf.etd));
+                            const ignoredCount = fakeImports.length - nonDuplicates.length;
+                            const messageContent = (
+                              <>
+                                Arquivo "{file.name}" foi carregado com sucesso! (simulação)
+                                <br/><br/>
+                                "{ignoredCount}" ignorados (por duplicidade).
+                                <br/>
+                                {nonDuplicates.length} importados.
+                              </>
+                            );
+                            setTimeout(() => {
+                              setAlertState({isOpen: true, title: 'Massa Simulada', message: messageContent});
+                            }, 100);
+                            return [...nonDuplicates, ...prev];
+                          });
+                        }
+                      }
+                      // Reset input value to allow importing the same file again
+                      e.target.value = '';
+                      setShowOptionsDropdown(false);
+                    }} 
+                  />
+                </label>
+
+                <button 
+                  onClick={() => {
+                    handleActivate();
+                    setShowOptionsDropdown(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-[#FEDC00]/20 hover:text-[#FEDC00]' : 'text-slate-600 hover:bg-[#FEDC00]/20 hover:text-slate-900'}`}
+                >
+                  <RefreshCw size={14} />
+                  Sincronizar Malha
+                </button>
+
+                <div className={`my-1 border-b ${isDarkMode ? 'border-white/5' : 'border-slate-100'}`} />
+
+                <button 
+                  onClick={() => {
+                    setShowClearMeshModal(true);
+                    setShowOptionsDropdown(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-red-600 hover:bg-red-50 hover:text-red-700'}`}
+                >
+                  <Trash2 size={14} />
+                  Limpar Malha Base
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="w-full h-full flex flex-col animate-in fade-in" onKeyDown={(e) => {
       if (e.key === 'Escape') handleClose();
@@ -413,193 +625,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
       <div className={`flex-1 overflow-hidden flex flex-col ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
         
         {/* Header */}
-        <div className={`px-6 h-16 shrink-0 flex items-center justify-between border-b ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-[#3CA317] border-transparent text-white'} z-[60] w-full shadow-sm`}>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <div>
-                <h2 className="text-sm font-black text-white tracking-tighter uppercase leading-none">Malha Base</h2>
-                <div className="flex items-center gap-4 mt-1">
-                  <p className="text-[10px] font-bold text-emerald-100/70 uppercase tracking-wider">
-                  {filteredFlights.length} de {meshFlights.length} registros • Modo Planilha
-                </p>
-                  <div className="h-3 w-px bg-white/20"></div>
-                  <div className="flex items-center gap-1 bg-black/20 p-0.5 rounded border border-white/10">
-                    {(['TODOS', 'MANHA', 'TARDE', 'NOITE'] as MeshShift[]).map(shift => (
-                      <button
-                        key={shift}
-                        onClick={() => setActiveShift(shift)}
-                        className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest transition-all ${activeShift === shift ? 'bg-emerald-500 text-slate-950' : 'text-emerald-100/50 hover:text-white'}`}
-                      >
-                        {shift}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="relative w-64 h-9">
-              <div className="absolute inset-0 bg-white/10 border border-white/20 rounded-md flex items-center transition-all focus-within:bg-white/20 focus-within:border-white/40">
-                <Search size={14} className="shrink-0 text-emerald-100 ml-3" />
-                <input 
-                  type="text" 
-                  placeholder="Pesquise..." 
-                  className="bg-transparent border-none outline-none text-[10px] text-white placeholder:text-emerald-100/50 font-mono uppercase w-full px-3 transition-all h-full"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="relative" ref={optionsMenuRef}>
-              <button 
-                onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase tracking-wider text-[11px] ${showOptionsDropdown ? 'bg-[#e5c600] shadow-inner' : 'bg-[#FEDC00] hover:bg-[#e5c600] shadow-sm'} text-[#4e4141] active:scale-95 border border-[#FEDC00]`}
-              >
-                <Settings size={14} />
-                <span>Opções</span>
-                <ChevronDown size={14} className={`transition-transform duration-200 ${showOptionsDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showOptionsDropdown && (
-                <div className={`absolute right-0 top-full mt-2 w-56 ${isDarkMode ? 'bg-slate-900 border-white/10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)]' : 'bg-white border-slate-200 shadow-xl'} border rounded-xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2`}>
-                  <div className="p-1.5 space-y-0.5">
-                    <div className="px-3 py-2 border-b border-white/5 mb-1">
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Ações da Malha Base</span>
-                    </div>
-
-                    <button 
-                      onClick={() => {
-                        handleAddFlight();
-                        setShowOptionsDropdown(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
-                    >
-                      <Plus size={14} />
-                      Adicionar Voo
-                    </button>
-
-                    <label className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${isDarkMode ? 'text-slate-300 hover:bg-blue-500/10 hover:text-blue-400' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-600'}`}>
-                      <Upload size={14} />
-                      Import. voos
-                      <input 
-                        type="file" 
-                        accept=".csv, .xlsx, .xls"
-                        className="hidden" 
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            const file = e.target.files[0];
-                            if (file.name.endsWith('.csv')) {
-                              const reader = new FileReader();
-                              reader.onload = (evt) => {
-                                const text = evt.target?.result as string;
-                                const lines = text.split(/\r?\n/);
-                                const newFlights: MeshFlight[] = [];
-                                lines.forEach((line, index) => {
-                                  if (!line.trim()) return;
-                                  const cols = line.split(/[;,]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
-                                  if (index === 0 && (cols[0].toLowerCase().includes('cia') || cols[0].toLowerCase().includes('airline'))) return;
-                                  if (cols.length >= 4) {
-                                    newFlights.push({
-                                      id: `imp-${Date.now()}-${index}`,
-                                      airline: cols[0] || 'G3',
-                                      airlineCode: cols[0] || 'GOL',
-                                      departureFlightNumber: cols[1] || '',
-                                      destination: cols[2] || '',
-                                      etd: formatImportTime(cols[3] || ''),
-                                      registration: cols[4] || '',
-                                      model: cols[5] || '',
-                                      eta: formatImportTime(cols[6] || ''),
-                                      positionId: cols[7] || '',
-                                      actualArrivalTime: formatImportTime(cols[8] || ''),
-                                      isNew: true
-                                    });
-                                  }
-                                });
-                                if (newFlights.length > 0) {
-                                  setMeshFlights(prev => {
-                                    const nonDuplicates = newFlights.filter(nf => {
-                                      // Duplicate if there's any flight in prev that matches flightNumber and ETD
-                                      return !prev.some(pf => 
-                                        pf.departureFlightNumber === nf.departureFlightNumber && 
-                                        pf.etd === nf.etd
-                                      );
-                                    });
-                                    const ignoredCount = newFlights.length - nonDuplicates.length;
-                                    if (ignoredCount > 0) {
-                                      setTimeout(() => alert(`${ignoredCount} linhas duplicadas ignoradas. ${nonDuplicates.length} importados com sucesso.`), 100);
-                                    } else {
-                                      setTimeout(() => alert(`${nonDuplicates.length} voo(s) importados com sucesso a partir de ${file.name}.`), 100);
-                                    }
-                                    return [...nonDuplicates, ...prev];
-                                  });
-                                }
-                              };
-                              reader.readAsText(file);
-                            } else {
-                              const fakeImports = INITIAL_MESH_FLIGHTS.map(f => ({
-                                ...f, 
-                                id: `imp-${Date.now()}-${Math.random()}`, 
-                                isNew: true,
-                                etd: formatImportTime(f.etd),
-                                eta: formatImportTime(f.eta),
-                                actualArrivalTime: formatImportTime(f.actualArrivalTime || '')
-                              }));
-                              setMeshFlights(prev => {
-                                const nonDuplicates = fakeImports.filter(nf => !prev.some(pf => pf.departureFlightNumber === nf.departureFlightNumber && pf.etd === nf.etd));
-                                const ignoredCount = fakeImports.length - nonDuplicates.length;
-                                setTimeout(() => {
-                                  alert(`Arquivo ${file.name} carregado (simulação). ${ignoredCount} ignorados por duplicidade. ${nonDuplicates.length} importados.`);
-                                }, 100);
-                                return [...nonDuplicates, ...prev];
-                              });
-                            }
-                          }
-                          // Reset input value to allow importing the same file again
-                          e.target.value = '';
-                          setShowOptionsDropdown(false);
-                        }} 
-                      />
-                    </label>
-
-                    <button 
-                      onClick={() => {
-                        handleActivate();
-                        setShowOptionsDropdown(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-[#FEDC00]/20 hover:text-[#FEDC00]' : 'text-slate-600 hover:bg-[#FEDC00]/20 hover:text-slate-900'}`}
-                    >
-                      <RefreshCw size={14} />
-                      Sincronizar Malha
-                    </button>
-
-                    <div className={`my-1 border-b ${isDarkMode ? 'border-white/5' : 'border-slate-100'}`} />
-
-                    <button 
-                      onClick={() => {
-                        setShowClearMeshModal(true);
-                        setShowOptionsDropdown(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-red-400 hover:bg-red-500/10 hover:text-red-300' : 'text-red-600 hover:bg-red-50 hover:text-red-700'}`}
-                    >
-                      <Trash2 size={14} />
-                      Limpar Malha Base
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button 
-              onClick={handleClose} 
-              className={`flex items-center justify-center w-9 h-9 rounded-md border transition-all ${isDarkMode ? 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white' : 'border-slate-300 text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
+        {portalTarget ? createPortal(headerContent, portalTarget) : headerContent}
 
         {/* Spreadsheet Area */}
         <div className={`flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-slate-950' : 'bg-white'}`}>
@@ -739,7 +765,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                                         };
                                         onActivateMesh([newFlightData]);
                                         setFlightActionMenu(null);
-                                        alert(`Voo ${flight.departureFlightNumber || newFlightData.registration} enviado para a Malha Geral!`);
+                                        setAlertState({isOpen: true, title: 'Sucesso', message: `Voo ${flight.departureFlightNumber || newFlightData.registration} enviado para a Malha Operacional!`});
                                     }}
                                     className="w-full px-3 py-2.5 text-[10px] font-bold uppercase flex items-center gap-2 hover:bg-emerald-900/30 text-emerald-400 border-b border-slate-700/50 transition-colors text-left"
                                 >
@@ -873,6 +899,27 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
           }}
           onClose={() => setShowClearMeshModal(false)}
         />
+      )}
+
+      {alertState.isOpen && (
+          <AlertModal 
+              isOpen={alertState.isOpen}
+              title={alertState.title}
+              message={alertState.message}
+              onClose={() => setAlertState(prev => ({...prev, isOpen: false}))}
+          />
+      )}
+
+      {syncConfirmState.isOpen && (
+          <ConfirmActionModal 
+              type="syncPartial"
+              message={syncConfirmState.message}
+              onConfirm={() => {
+                  setSyncConfirmState(prev => ({...prev, isOpen: false}));
+                  executeSync(syncConfirmState.unsynced);
+              }}
+              onClose={() => setSyncConfirmState(prev => ({...prev, isOpen: false}))}
+          />
       )}
     </div>
   );

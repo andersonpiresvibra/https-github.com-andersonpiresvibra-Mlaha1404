@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { OperatorProfile, FlightData } from '../types';
-import { X, Plus, Trash2, BusFront, User, ArrowLeft, Upload, UserPlus, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, BusFront, User, ArrowLeft, Upload, UserPlus, AlertCircle, Check, Pause, Play, Search } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface ShiftOperatorsSectionProps {
@@ -16,10 +16,9 @@ interface ShiftOperatorsSectionProps {
 
 export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ onClose, operators, onUpdateOperators, onOpenCreateModal, onOpenImportModal, flights, onUpdateFlights }) => {
     const { isDarkMode } = useTheme();
-    const [nameInput, setNameInput] = useState('');
-    const [fleetInput, setFleetInput] = useState('');
-    const [fleetTypeInput, setFleetTypeInput] = useState<'SRV' | 'CTA' | ''>('');
     const [activeTab, setActiveTab] = useState<'GERAL' | 'SRV' | 'CTA'>('GERAL');
+    const [drafts, setDrafts] = useState<number[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
     const optionsMenuRef = useRef<HTMLDivElement>(null);
@@ -46,33 +45,45 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
         };
     }, []);
 
-    const handleAdd = () => {
-        if (!nameInput.trim() || !fleetInput.trim() || !fleetTypeInput) return;
+    const computeDuration = (pausedAt?: string, resumedAt?: string) => {
+        if (!pausedAt || !resumedAt) return '-';
+        const [h1, m1] = pausedAt.split(':').map(Number);
+        const [h2, m2] = resumedAt.split(':').map(Number);
+        let diffMins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (diffMins < 0) diffMins += 24 * 60;
+        const hours = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        return `${hours.toString()}:${mins.toString().padStart(2,'0')}`;
+    };
 
-        const newOperator: OperatorProfile = {
-            id: `op_${Date.now()}`,
-            fullName: nameInput,
-            warName: nameInput,
-            companyId: '',
-            gruId: '',
-            vestNumber: '',
-            photoUrl: '',
-            status: 'DISPONÍVEL',
-            category: 'AERODROMO',
-            lastPosition: '',
-            assignedVehicle: fleetInput || undefined,
-            fleetCapability: fleetTypeInput || undefined,
-            shift: { cycle: 'GERAL', start: '00:00', end: '23:59' },
-            airlines: [],
-            ratings: { speed: 5, safety: 5, airlineSpecific: {} },
-            expertise: { servidor: 50, cta: 50 },
-            stats: { flightsWeekly: 0, flightsMonthly: 0, volumeWeekly: 0, volumeMonthly: 0 }
-        };
+    const handleTogglePause = (id: string) => {
+        const op = operators.find(o => o.id === id);
+        if (!op) return;
 
-        onUpdateOperators([...operators, newOperator]);
-        setNameInput('');
-        setFleetInput('');
-        setFleetTypeInput('');
+        if (op.status !== 'INTERVALO' && flights) {
+            const isBusy = flights.some(f => 
+                (f.status !== 'FINALIZADO' && f.status !== 'CANCELADO') && 
+                (f.operator === op.warName || f.supportOperator === op.warName)
+            );
+            if (isBusy) {
+                alert(`O operador ${op.warName} não pode entrar em pausa pois está em atendimento.`);
+                return;
+            }
+        }
+
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        onUpdateOperators(operators.map(o => {
+            if (o.id === id) {
+                if (o.status === 'INTERVALO') {
+                    return { ...o, status: 'DISPONÍVEL', resumedAt: timeString };
+                } else {
+                    return { ...o, status: 'INTERVALO', pausedAt: timeString, resumedAt: undefined };
+                }
+            }
+            return o;
+        }));
     };
 
     const handleRemove = (id: string) => {
@@ -143,8 +154,230 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
         }));
     };
 
-    const srvOperators = operators.filter(op => op.fleetCapability !== 'CTA');
-    const ctaOperators = operators.filter(op => op.fleetCapability === 'CTA');
+    const filteredOperators = operators.filter(op => {
+        if (!searchTerm) return true;
+        const lowerTerm = searchTerm.toLowerCase();
+        return (
+            op.warName.toLowerCase().includes(lowerTerm) ||
+            (op.assignedVehicle && op.assignedVehicle.toLowerCase().includes(lowerTerm)) ||
+            (op.fleetCapability && op.fleetCapability.toLowerCase().includes(lowerTerm))
+        );
+    });
+
+    const srvOperators = filteredOperators.filter(op => op.fleetCapability !== 'CTA');
+    const ctaOperators = filteredOperators.filter(op => op.fleetCapability === 'CTA');
+
+    const renderOperatorRow = (op: OperatorProfile) => {
+        const isCTA = op.fleetCapability === 'CTA';
+        const isPaused = op.status === 'INTERVALO';
+        const isBusy = (!isPaused && flights) ? flights.some(f => 
+            (f.status !== 'FINALIZADO' && f.status !== 'CANCELADO') && 
+            (f.operator === op.warName || f.supportOperator === op.warName)
+        ) : false;
+        
+        const pauseDuration = (op.pausedAt && op.resumedAt) ? computeDuration(op.pausedAt, op.resumedAt) : '-';
+        const bgClass = isPaused 
+            ? (isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-100/50 border-slate-200 opacity-60')
+            : isCTA 
+                ? (isDarkMode ? 'bg-yellow-950/10 border-yellow-900/20' : 'bg-yellow-50/50 border-yellow-200/50')
+                : (isDarkMode ? 'bg-emerald-950/10 border-emerald-900/20' : 'bg-emerald-50/50 border-emerald-200/50');
+        
+        return (
+            <div key={op.id} className={`flex items-center gap-4 py-2 px-4 border-b transition-colors group ${bgClass} ${isDarkMode ? 'border-slate-800/50 hover:bg-slate-800/80' : 'border-slate-200/50 hover:bg-slate-50'}`}>
+                <div className="w-56 flex items-center gap-4 shrink-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border shrink-0 shadow-sm ${
+                        isCTA 
+                        ? (isDarkMode ? 'bg-yellow-900/50 text-yellow-400 border-yellow-800' : 'bg-white text-yellow-700 border-yellow-400')
+                        : (isDarkMode ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800' : 'bg-white text-emerald-700 border-emerald-400')
+                    }`}>
+                        {op.warName.charAt(0)}
+                    </div>
+                    <div className={`font-bold text-sm uppercase tracking-tight truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                        {op.warName}
+                    </div>
+                </div>
+                
+                <div className="w-32 flex gap-1 justify-center shrink-0">
+                    {['SRV', 'CTA'].map((type) => (
+                        <button
+                            key={type}
+                            onClick={() => handleUpdateOperator(op.id, 'fleetCapability', type)}
+                            className={`flex-1 text-[10px] font-bold rounded border py-1.5 transition-all shadow-sm ${
+                                op.fleetCapability === type 
+                                ? (type === 'CTA' ? 'bg-yellow-600 border-yellow-600 text-white' : 'bg-emerald-600 border-emerald-600 text-white')
+                                : isDarkMode
+                                    ? 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-white'
+                                    : 'bg-white border-slate-300 text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="w-16 shrink-0">
+                    <input 
+                        type="text"
+                        value={op.assignedVehicle || ''}
+                        onChange={(e) => handleUpdateOperator(op.id, 'assignedVehicle', e.target.value.toUpperCase())}
+                        placeholder="FROTA"
+                        className={`w-full border text-xs px-2 py-1.5 rounded-md font-mono font-bold outline-none focus:ring-2 text-center uppercase shadow-sm ${
+                            isCTA ? 'focus:ring-yellow-500/20 focus:border-yellow-500' : 'focus:ring-emerald-500/20 focus:border-emerald-500'
+                        } ${
+                            isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                        } ${isPaused ? 'opacity-50 pointer-events-none' : ''}`}
+                        disabled={isPaused}
+                    />
+                </div>
+
+                <div className="w-20 shrink-0 text-center font-mono font-bold text-xs text-slate-500">{op.pausedAt || '-'}</div>
+                <div className="w-20 shrink-0 text-center font-mono font-bold text-xs text-slate-500">{op.resumedAt || '-'}</div>
+                <div className="w-16 shrink-0 text-center font-mono font-bold text-xs text-slate-500" title="Tempo de pausa">{pauseDuration}</div>
+
+                <div className="flex items-center justify-end w-24 shrink-0 gap-1">
+                    <button 
+                        onClick={() => handleTogglePause(op.id)}
+                        disabled={isBusy}
+                        className={`p-2 rounded transition-colors ${
+                            isPaused 
+                            ? (isDarkMode ? 'text-emerald-400 hover:bg-emerald-500/20' : 'text-emerald-500 hover:bg-emerald-100')
+                            : (isBusy 
+                                ? (isDarkMode ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 cursor-not-allowed') 
+                                : (isDarkMode ? 'text-amber-500 hover:bg-amber-500/20' : 'text-amber-500 hover:bg-amber-100'))
+                        }`}
+                        title={isBusy ? "Operador em atendimento. Não é possível pausar." : (isPaused ? "Retornar operador" : "Pausar operador")}
+                    >
+                        {isPaused ? <Play size={16} /> : <Pause size={16} />}
+                    </button>
+                    <button 
+                        onClick={() => handleRemove(op.id)}
+                        className={`p-2 rounded transition-colors ${
+                            isDarkMode ? 'text-slate-500 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+                        }`}
+                        title="Remover Operador"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
+                <div className="flex-1"></div>
+            </div>
+        );
+    };
+
+    const DraftOperatorRow = ({ id, onRemove }: { id: number, onRemove: (id: number) => void }) => {
+        const [name, setName] = useState('');
+        const [fleet, setFleet] = useState('');
+        const [fleetType, setFleetType] = useState<'SRV'|'CTA'|''>('');
+
+        const handleSave = () => {
+            if (!name.trim() || !fleet.trim() || !fleetType) return;
+            const newOperator: OperatorProfile = {
+                id: `op_${Date.now()}_${Math.random()}`,
+                fullName: name.toUpperCase(),
+                warName: name.toUpperCase(),
+                companyId: '',
+                gruId: '',
+                vestNumber: '',
+                photoUrl: '',
+                status: 'DISPONÍVEL',
+                category: 'AERODROMO',
+                lastPosition: '',
+                assignedVehicle: fleet.toUpperCase(),
+                fleetCapability: fleetType,
+                shift: { cycle: 'GERAL', start: '00:00', end: '23:59' },
+                airlines: [],
+                ratings: { speed: 5, safety: 5, airlineSpecific: {} },
+                expertise: { servidor: 50, cta: 50 },
+                stats: { flightsWeekly: 0, flightsMonthly: 0, volumeWeekly: 0, volumeMonthly: 0 }
+            };
+            onUpdateOperators([...operators, newOperator]);
+            onRemove(id);
+        };
+
+        const handleKeyDown = (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                handleSave();
+            }
+        };
+
+        return (
+            <div className={`flex items-center gap-4 py-2 px-4 border-b transition-colors ${isDarkMode ? 'border-slate-800 bg-slate-900/30' : 'border-slate-200 bg-slate-50/50'}`}>
+                <div className="w-56 flex items-center gap-4 shrink-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <User size={14} className={isDarkMode ? 'text-slate-500' : 'text-slate-400'} />
+                    </div>
+                    <input 
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value.toUpperCase())}
+                        onKeyDown={handleKeyDown}
+                        placeholder="NOVO OPERADOR"
+                        className={`flex-1 min-w-0 border text-xs px-3 py-1.5 rounded-md font-mono font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 uppercase shadow-sm ${
+                            isDarkMode ? 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
+                    />
+                </div>
+                
+                <div className="w-32 flex gap-1 justify-center shrink-0">
+                    {['SRV', 'CTA'].map((type) => (
+                        <button
+                            key={type}
+                            onClick={() => setFleetType(type as 'SRV'|'CTA')}
+                            className={`flex-1 text-[10px] font-bold rounded border py-1.5 transition-all shadow-sm ${
+                                fleetType === type 
+                                ? (type === 'CTA' ? 'bg-yellow-600 border-yellow-600 text-white' : 'bg-emerald-600 border-emerald-600 text-white')
+                                : isDarkMode
+                                    ? 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-white'
+                                    : 'bg-white border-slate-300 text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="w-16 shrink-0">
+                    <input 
+                        type="text"
+                        value={fleet}
+                        onChange={(e) => setFleet(e.target.value.toUpperCase())}
+                        onKeyDown={handleKeyDown}
+                        placeholder="FROTA"
+                        className={`w-full border text-xs px-2 py-1.5 rounded-md font-mono font-bold outline-none focus:ring-2 text-center uppercase shadow-sm ${
+                            isDarkMode ? 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
+                    />
+                </div>
+
+                <div className="w-20 shrink-0 text-center font-mono font-bold text-xs text-slate-500">-</div>
+                <div className="w-20 shrink-0 text-center font-mono font-bold text-xs text-slate-500">-</div>
+                <div className="w-16 shrink-0 text-center font-mono font-bold text-xs text-slate-500">-</div>
+
+                <div className="flex items-center gap-1 w-24 justify-end shrink-0">
+                    <button 
+                        onClick={handleSave}
+                        disabled={!name.trim() || !fleet.trim() || !fleetType}
+                        className="p-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition-colors shadow-sm"
+                        title="Salvar"
+                    >
+                        <Check size={16} />
+                    </button>
+                    {drafts.length > 1 && (
+                        <button 
+                            onClick={() => onRemove(id)}
+                            className={`p-2 rounded transition-colors ${
+                                isDarkMode ? 'text-slate-500 hover:text-red-400 hover:bg-red-500/10' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+                            }`}
+                            title="Remover linha"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    )}
+                </div>
+                <div className="flex-1"></div>
+            </div>
+        )
+    };
 
     const renderOperatorCard = (op: OperatorProfile) => {
         const isCTA = op.fleetCapability === 'CTA';
@@ -241,111 +474,36 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
                 </div>
             </div>
 
-            <div className="flex items-center gap-3">
-                <div className="w-56">
+            <div className="flex-1 flex justify-end mr-4">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border w-64 transition-all ${
+                    isDarkMode 
+                    ? 'bg-slate-900 border-slate-700 text-slate-300 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50' 
+                    : 'bg-white/20 border-white/20 text-white focus-within:bg-white/30'
+                }`}>
+                    <Search size={14} className="opacity-50 shrink-0" />
                     <input 
-                        type="text"
-                        value={nameInput}
-                        onChange={e => setNameInput(e.target.value)}
-                        placeholder="OPERADOR"
-                        className={`w-full border text-sm px-4 py-[5px] h-[33px] rounded-lg font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all uppercase ${
-                            isDarkMode 
-                            ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-500' 
-                            : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
-                        }`}
+                        type="text" 
+                        placeholder="Buscar operador, frota..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-transparent border-none outline-none text-xs font-bold uppercase w-full placeholder:text-inherit placeholder:opacity-50"
                     />
-                </div>
-                <div className="w-20">
-                    <input 
-                        type="text"
-                        value={fleetInput}
-                        onChange={e => setFleetInput(e.target.value)}
-                        placeholder="FROTA"
-                        className={`w-full border text-sm px-3 py-[5px] h-[33px] rounded-lg font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all uppercase text-center ${
-                            isDarkMode 
-                            ? 'bg-slate-800 border-slate-700 text-white placeholder:text-slate-500' 
-                            : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
-                        }`}
-                    />
-                </div>
-                <div className="w-32 flex gap-1">
-                    {['SRV', 'CTA'].map((type) => (
-                        <button
-                            key={type}
-                            type="button"
-                            onClick={() => setFleetTypeInput(type as 'SRV' | 'CTA')}
-                            className={`flex-1 text-[11px] font-bold rounded-lg border transition-all h-[33px] ${
-                                fleetTypeInput === type 
-                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' 
-                                : isDarkMode
-                                    ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-emerald-500/50 hover:text-emerald-400'
-                                    : 'bg-white border-slate-300 text-slate-500 hover:border-emerald-300 hover:text-emerald-600'
-                            }`}
-                        >
-                            {type}
+                    {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="opacity-50 hover:opacity-100 transition-opacity">
+                            <X size={14} />
                         </button>
-                    ))}
+                    )}
                 </div>
-                <button 
-                    onClick={handleAdd}
-                    disabled={!nameInput.trim() || !fleetInput.trim() || !fleetTypeInput}
-                    className="h-[33px] px-4 bg-[#FEDC00] hover:bg-[#e5c600] disabled:opacity-40 disabled:cursor-not-allowed text-[#4e4141] rounded-lg font-bold text-[11px] uppercase tracking-wider transition-colors flex items-center gap-2"
-                >
-                    <Plus size={16} /> Adicionar
-                </button>
             </div>
-        </div>
-    );
 
-    const optionsDropdownContent = (
-        <div className="relative z-[100]" ref={optionsMenuRef}>
-            <button 
-                onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
-                className={`flex items-center gap-2 px-6 py-2 rounded-md border border-[#FEDC00] transition-all font-bold uppercase tracking-wider text-[11px] bg-[#FEDC00] text-[#4e4141] hover:bg-[#e5c600] shadow-sm btn-options-subheader`}
-            >
-                <span>Opções</span>
-            </button>
-
-            {showOptionsDropdown && (
-                <div className={`absolute right-0 top-10 w-56 ${isDarkMode ? 'bg-slate-900 border-emerald-500/30' : 'bg-white border-emerald-500/30'} border-[0.5px] rounded-2xl shadow-2xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2`}>
-                    <div className="p-2 space-y-1">
-                        <button 
-                            onClick={() => {
-                                if (onOpenCreateModal) onOpenCreateModal();
-                                setShowOptionsDropdown(false);
-                            }}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-400' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'}`}
-                        >
-                            <Plus size={16} />
-                            Criar Voo
-                        </button>
-                        <button 
-                            onClick={() => {
-                                if (onOpenImportModal) onOpenImportModal();
-                                setShowOptionsDropdown(false);
-                            }}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-400' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'}`}
-                        >
-                            <Upload size={16} />
-                            Importar
-                        </button>
-                        <button 
-                            disabled
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all ${isDarkMode ? 'text-slate-600 bg-slate-800/50' : 'text-slate-400 bg-slate-100'} cursor-not-allowed`}
-                        >
-                            <UserPlus size={16} />
-                            Operadores do Turno
-                        </button>
-                    </div>
-                </div>
-            )}
+            <div className="flex items-center gap-3">
+            </div>
         </div>
     );
 
     return (
         <div className={`w-full h-full flex flex-col ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'} animate-in fade-in duration-200`}>
             {portalTarget ? createPortal(headerContent, portalTarget) : headerContent}
-            {optionsPortalTarget ? createPortal(optionsDropdownContent, optionsPortalTarget) : null}
 
             {replaceOperatorModal.isOpen && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -445,7 +603,7 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
                             ? (isDarkMode ? 'bg-indigo-900/50 text-indigo-400' : 'bg-indigo-100 text-indigo-700')
                             : (isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')
                         }`}>
-                            {operators.length}
+                            {filteredOperators.length}
                         </span>
                     </button>
                     <button
@@ -487,43 +645,73 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 pt-4">
-                <div className="w-full">
-                    <div className="flex flex-wrap gap-2 content-start">
-                        {activeTab === 'GERAL' && (
-                            operators.length > 0 ? operators.map(op => (
-                                <div key={op.id} className="w-full sm:w-[240px]">
-                                    {renderOperatorCard(op)}
+            <div className={`flex-1 overflow-y-auto ${activeTab === 'GERAL' ? 'p-0' : 'p-6 pt-4'}`}>
+                <div className="w-full h-full flex flex-col">
+                    {activeTab === 'GERAL' && (
+                        <div className="w-full flex-1 flex flex-col min-h-0 bg-transparent">
+                            <div className={`flex items-center gap-4 py-2 px-4 shadow-[0_4px_10px_rgba(0,0,0,0.05)] border-b text-[10px] font-black uppercase tracking-widest ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
+                                <div className="w-56 px-11 shrink-0">OPERADOR</div>
+                                <div className="w-32 shrink-0 text-center">TIPO EQUIP.</div>
+                                <div className="w-16 shrink-0 text-center">FROTA</div>
+                                <div className="w-20 shrink-0 text-center">PAUSA</div>
+                                <div className="w-20 shrink-0 text-center">RETORNO</div>
+                                <div className="w-16 shrink-0 text-center">TEMPO</div>
+                                <div className="w-24 shrink-0 text-right pr-[5px]">AÇÕES</div>
+                                <div className="flex-1"></div>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 custom-scrollbar">
+                                {filteredOperators.map(op => renderOperatorRow(op))}
+                                {drafts.map(id => (
+                                    <DraftOperatorRow 
+                                        key={id} 
+                                        id={id} 
+                                        onRemove={(removeId) => setDrafts(prev => prev.filter(d => d !== removeId))} 
+                                    />
+                                ))}
+
+                                <div className={`py-3 px-4 flex justify-start border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                                    <button 
+                                        onClick={() => setDrafts([...drafts, Date.now()])}
+                                        className={`flex items-center justify-center px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all shadow-md ${
+                                            isDarkMode 
+                                            ? 'bg-amber-500 hover:bg-amber-400 text-amber-950 border-amber-400' 
+                                            : 'bg-amber-400 hover:bg-amber-300 text-amber-950 border-amber-300'
+                                        }`}
+                                    >
+                                        + Operador/Frota
+                                    </button>
                                 </div>
-                            )) : (
-                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
-                                    Nenhum operador
-                                </div>
-                            )
-                        )}
-                        {activeTab === 'SRV' && (
-                            srvOperators.length > 0 ? srvOperators.map(op => (
-                                <div key={op.id} className="w-full sm:w-[240px]">
-                                    {renderOperatorCard(op)}
-                                </div>
-                            )) : (
-                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
-                                    Nenhum operador SRV
-                                </div>
-                            )
-                        )}
-                        {activeTab === 'CTA' && (
-                            ctaOperators.length > 0 ? ctaOperators.map(op => (
-                                <div key={op.id} className="w-full sm:w-[240px]">
-                                    {renderOperatorCard(op)}
-                                </div>
-                            )) : (
-                                <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
-                                    Nenhum operador CTA
-                                </div>
-                            )
-                        )}
-                    </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {(activeTab === 'SRV' || activeTab === 'CTA') && (
+                        <div className="flex flex-wrap gap-2 content-start w-full">
+                            {activeTab === 'SRV' && (
+                                srvOperators.length > 0 ? srvOperators.map(op => (
+                                    <div key={op.id} className="w-full sm:w-[240px]">
+                                        {renderOperatorCard(op)}
+                                    </div>
+                                )) : (
+                                    <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
+                                        Nenhum operador SRV
+                                    </div>
+                                )
+                            )}
+                            {activeTab === 'CTA' && (
+                                ctaOperators.length > 0 ? ctaOperators.map(op => (
+                                    <div key={op.id} className="w-full sm:w-[240px]">
+                                        {renderOperatorCard(op)}
+                                    </div>
+                                )) : (
+                                    <div className="w-full text-center py-8 text-slate-400 font-bold uppercase tracking-widest text-xs">
+                                        Nenhum operador CTA
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
