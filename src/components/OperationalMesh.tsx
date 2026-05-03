@@ -48,23 +48,44 @@ const isTimeInShift = (timeStr: string, shift: MeshShift) => {
   return true;
 };
 
-const formatImportTime = (val: string) => {
-  if (!val) return '';
-  const digits = val.replace(/[^0-9]/g, '');
-  if (digits.length >= 4) {
+const formatImportTime = (val: any) => {
+  if (val == null || val === '') return '';
+  const sVal = String(val).trim().replace(',', '.');
+  
+  // Handle Excel Serial Number (e.g. 0.340277)
+  const numVal = parseFloat(sVal);
+  if (!isNaN(numVal) && numVal > 0 && numVal < 1) {
+    const totalSeconds = Math.round(numVal * 86400); 
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  }
+
+  // Handle specific status strings (don't mark as error if expected)
+  const normalized = sVal.toLowerCase();
+  if (normalized.includes('ind') || normalized.includes('pr') || normalized.includes('ench')) {
+    return '';
+  }
+
+  const digits = sVal.replace(/[^0-9]/g, '');
+  if (digits.length === 4) {
     const hh = parseInt(digits.slice(0, 2), 10);
     const mm = parseInt(digits.slice(2, 4), 10);
     if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
       return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
     }
-  } else if (val.includes(':')) {
-     const [h, m] = val.split(':');
-     if (!isNaN(Number(h)) && !isNaN(Number(m))) {
-       const hh = Number(h);
-       const mm = Number(m);
-       if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
-           return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
-       }
+  } else if (digits.length === 3) {
+      const hh = parseInt(digits.slice(0, 1), 10);
+      const mm = parseInt(digits.slice(1, 3), 10);
+      if (hh >= 0 && hh <= 9 && mm >= 0 && mm <= 59) {
+        return `0${hh}:${mm.toString().padStart(2, '0')}`;
+      }
+  } else if (sVal.includes(':')) {
+     const parts = sVal.split(':');
+     const hh = parseInt(parts[0], 10);
+     const mm = parseInt(parts[1], 10);
+     if (!isNaN(hh) && !isNaN(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+         return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
      }
   }
   return '?';
@@ -225,6 +246,18 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
         return;
     }
 
+    const errorFlight = unsyncedFlights.find(f => f.isError);
+    if (errorFlight) {
+        setAlertState({isOpen: true, title: 'Dados Inválidos', message: 'Há voos com dados inválidos (marcados em vermelho no final da lista). Exclua ou desabilite essas linhas antes de sincronizar.'});
+        return;
+    }
+
+    const formatErrorFlight = unsyncedFlights.find(f => f.etd === '?' || f.eta === '?' || f.actualArrivalTime === '?');
+    if (formatErrorFlight) {
+        setAlertState({isOpen: true, title: 'Erro de Formatação', message: 'Há voos com erro de formatação de hora (marcados com "?" e linha vermelha). Corrija os valores antes de enviar.'});
+        return;
+    }
+
     if (unsyncedFlights.length < activeFlights.length) {
         setSyncConfirmState({isOpen: true, message: `Alguns voos já estão sincronizados na Malha Geral. Deseja enviar apenas os ${unsyncedFlights.length} voos pendentes?`, unsynced: unsyncedFlights});
         return;
@@ -277,6 +310,8 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
     
     return matchesSearch && matchesShift;
   }).sort((a, b) => {
+    if (a.isError && !b.isError) return 1;
+    if (!a.isError && b.isError) return -1;
     if (a.isNew && !b.isNew) return -1;
     if (!a.isNew && b.isNew) return 1;
     return (a.etd || '').localeCompare(b.etd || '');
@@ -514,7 +549,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                               const ignoredCount = newFlights.length - nonDuplicates.length;
                               const messageContent = (
                                 <>
-                                  Arquivo "{file.name}" foi carregado com sucesso!
+                                  Arquivo "{file.name}" foi carregado com sucesso!.
                                   <br/><br/>
                                   "{ignoredCount}" ignorados (por duplicidade).
                                   <br/>
@@ -536,21 +571,37 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                             lines.forEach((line, index) => {
                               if (!line.trim()) return;
                               const cols = line.split(/[;,]/).map(c => c.trim().replace(/^["']|["']$/g, ''));
-                              if (index === 0 && (cols[0].toLowerCase().includes('cia') || cols[0].toLowerCase().includes('airline'))) return;
-                              if (cols.length >= 4) {
+                              
+                              const rowText = cols.join(' ').toLowerCase();
+                              // Improved header skip
+                              const isHeader = rowText.includes('cia') || rowText.includes('voo') || rowText.includes('destino') || rowText.includes('estimado');
+                              if (index === 0 && isHeader) return;
+                              
+                              if (cols.length >= 3) {
+                                const fullFlight = (cols[0] || '').trim().toUpperCase();
+                                
+                                // Get only letters for CIA, but keep full flight for VOO
+                                const airlineMatch = fullFlight.match(/^([A-Z0-9]{2,3})/);
+                                const airlineCode = airlineMatch ? airlineMatch[1] : 'G3';
+
+                                const rowText = cols.join(' ').toLowerCase();
+                                const isErrorRow = rowText.includes('ench') || rowText.includes('pre');
+
                                 newFlights.push({
                                   id: `imp-${Date.now()}-${index}`,
-                                  airline: cols[0] || 'G3',
-                                  airlineCode: cols[0] || 'GOL',
-                                  departureFlightNumber: cols[1] || '',
-                                  destination: cols[2] || '',
-                                  etd: formatImportTime(cols[3] || ''),
+                                  airline: airlineCode,
+                                  airlineCode: airlineCode,
+                                  departureFlightNumber: fullFlight,
+                                  destination: cols[1] || '',
+                                  etd: formatImportTime(cols[2] || ''),
                                   registration: cols[4] || '',
                                   model: cols[5] || '',
-                                  eta: formatImportTime(cols[6] || ''),
+                                  eta: formatImportTime(cols[3] || ''),
                                   positionId: cols[7] || '',
                                   actualArrivalTime: formatImportTime(cols[8] || ''),
-                                  isNew: true
+                                  isNew: true,
+                                  isError: isErrorRow,
+                                  errorReason: isErrorRow ? 'Dados da linha não condizem' : undefined
                                 });
                               }
                             });
@@ -569,23 +620,38 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                             const newFlights: MeshFlight[] = [];
                             jsonData.forEach((row, index) => {
                               if (!row || row.length === 0) return;
-                              if (index === 0 && row[0] && (String(row[0]).toLowerCase().includes('cia') || String(row[0]).toLowerCase().includes('airline'))) return;
                               
                               const cols = row.map(cell => cell != null ? String(cell) : '');
-                              if (cols.length >= 4) {
+                              const rowText = cols.join(' ').toLowerCase();
+                              // Improved header skip
+                              const isHeader = rowText.includes('cia') || rowText.includes('voo') || rowText.includes('destino') || rowText.includes('estimado');
+                              if (index === 0 && isHeader) return;
+                              
+                              if (cols.length >= 3) {
+                                const fullFlight = (cols[0] || '').trim().toUpperCase();
+                                
+                                // Get only letters for CIA, but keep full flight for VOO
+                                const airlineMatch = fullFlight.match(/^([A-Z0-9]{2,3})/);
+                                const airlineCode = airlineMatch ? airlineMatch[1] : 'G3';
+
+                                const rowText = cols.join(' ').toLowerCase();
+                                const isErrorRow = rowText.includes('ench') || rowText.includes('pre');
+
                                 newFlights.push({
                                   id: `imp-${Date.now()}-${index}`,
-                                  airline: cols[0] || 'G3',
-                                  airlineCode: cols[0] || 'GOL',
-                                  departureFlightNumber: cols[1] || '',
-                                  destination: cols[2] || '',
-                                  etd: formatImportTime(cols[3] || ''),
+                                  airline: airlineCode,
+                                  airlineCode: airlineCode,
+                                  departureFlightNumber: fullFlight,
+                                  destination: cols[1] || '',
+                                  etd: formatImportTime(cols[2] || ''),
                                   registration: cols[4] || '',
                                   model: cols[5] || '',
-                                  eta: formatImportTime(cols[6] || ''),
+                                  eta: formatImportTime(cols[3] || ''),
                                   positionId: cols[7] || '',
                                   actualArrivalTime: formatImportTime(cols[8] || ''),
-                                  isNew: true
+                                  isNew: true,
+                                  isError: isErrorRow,
+                                  errorReason: isErrorRow ? 'Dados da linha não condizem' : undefined
                                 });
                               }
                             });
@@ -663,6 +729,7 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
               {filteredFlights.map((flight, rIdx) => {
                 const isSynced = isFlightSynced(flight);
                 const hasFormatError = flight.etd === '?' || flight.eta === '?' || flight.actualArrivalTime === '?';
+                const hasDataError = flight.isError;
                 const isDuplicated = meshFlights.some(f => 
                   f.id !== flight.id && 
                   f.departureFlightNumber === flight.departureFlightNumber && 
@@ -671,14 +738,14 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                   f.etd !== '' &&
                   f.etd !== '?'
                 );
-                const isReady = flight.airline && flight.departureFlightNumber && flight.destination && flight.etd && flight.etd !== '?';
+                const isReady = flight.airline && flight.departureFlightNumber && flight.destination && flight.etd && flight.etd !== '?' && !hasDataError;
                 return (
                 <React.Fragment key={flight.id}>
                 <tr 
                   data-row={rIdx}
                   className={`
                     group transition-all h-8
-                    ${isDuplicated || hasFormatError ? 'bg-red-900/40 text-red-100 font-bold' : (!isSynced ? (isReady ? (isDarkMode ? 'bg-indigo-900/40 text-indigo-100 font-bold' : 'bg-indigo-100 font-bold') : (isDarkMode ? 'bg-yellow-900/40' : 'bg-yellow-100 font-bold')) : (rIdx % 2 === 0 ? (isDarkMode ? 'bg-slate-900' : 'bg-white') : (isDarkMode ? 'bg-slate-950' : 'bg-slate-100')))}
+                    ${isDuplicated || hasFormatError || hasDataError ? 'bg-red-900/40 text-red-100 font-bold' : (!isSynced ? (isReady ? (isDarkMode ? 'bg-indigo-900/40 text-indigo-100 font-bold' : 'bg-indigo-100 font-bold') : (isDarkMode ? 'bg-yellow-900/40' : 'bg-yellow-100 font-bold')) : (rIdx % 2 === 0 ? (isDarkMode ? 'bg-slate-900' : 'bg-white') : (isDarkMode ? 'bg-slate-950' : 'bg-slate-100')))}
                     ${flight.disabled ? 'opacity-50' : 'hover:bg-indigo-600/30'}
                   `}
                 >
@@ -874,6 +941,16 @@ export const OperationalMesh: React.FC<OperationalMeshProps> = ({ onClose, onAct
                       <div className="flex items-center justify-center gap-2">
                         <AlertCircle size={12} />
                         Atenção: Erro de formatação de hora. Corrija as células com "?" antes de enviar.
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {flight.isError && (
+                  <tr className="bg-red-500/10 border-b border-red-500/20">
+                    <td colSpan={COLUMNS.length} className="px-3 py-1 text-[10px] text-red-500 font-bold uppercase tracking-widest text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <Ban size={12} />
+                        Atenção: {flight.errorReason || 'Linha possui dados inválidos correspondentes a controle interno, ignore-os ou exluia essa linha antes de enviar.'}
                       </div>
                     </td>
                   </tr>

@@ -673,13 +673,13 @@ export const ShiftOperatorsSection: React.FC<ShiftOperatorsSectionProps> = ({ on
                                 <div className={`py-3 px-4 flex justify-start border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                                     <button 
                                         onClick={() => setDrafts([...drafts, Date.now()])}
-                                        className={`flex items-center justify-center px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all shadow-md ${
+                                        className={`flex items-center justify-center px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 border ${
                                             isDarkMode 
-                                            ? 'bg-amber-500 hover:bg-amber-400 text-amber-950 border-amber-400' 
-                                            : 'bg-amber-400 hover:bg-amber-300 text-amber-950 border-amber-300'
+                                            ? 'bg-[#FEDC00] text-[#4e4141] border-[#FEDC00] hover:bg-[#e5c600]' 
+                                            : 'bg-[#FEDC00] text-[#4e4141] border-[#FEDC00] hover:bg-[#e5c600]'
                                         }`}
                                     >
-                                        + Operador/Frota
+                                        + OPERADOR/FROTA
                                     </button>
                                 </div>
                             </div>
